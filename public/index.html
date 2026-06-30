@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="BetGuard — Responsible gambling wallet powered by Nomba APIs.">
+<title>BetGuard — Responsible Gambling Wallet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Plus Jakarta Sans', 'sans-serif'],
+      },
+      colors: {
+        glass: { border: 'rgba(255,255,255,0.6)', bg: 'rgba(255,255,255,0.65)' }
+      },
+      boxShadow: {
+        'glass': '0 8px 32px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.02)',
+        'glass-lg': '0 16px 48px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.02)',
+      },
+      animation: {
+        'fade-up': 'fadeUp 0.4s cubic-bezier(0.16,1,0.3,1)',
+      },
+      keyframes: {
+        fadeUp: {
+          '0%': { opacity: '0', transform: 'translateY(12px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        }
+      }
+    }
+  }
+}
+</script>
+<style>
+  * { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.08) transparent; }
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 10px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.14); }
+
+  .glass { background: rgba(255,255,255,0.65); backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4); border: 1px solid rgba(255,255,255,0.7); }
+  .glass-strong { background: rgba(255,255,255,0.88); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2); border: 1px solid rgba(255,255,255,0.6); }
+  .glass-card { background: rgba(255,255,255,0.75); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border: 1px solid rgba(255,255,255,0.7); }
+  .glass-hero { background: linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(238,242,255,0.7) 100%); backdrop-filter: blur(28px) saturate(1.6); -webkit-backdrop-filter: blur(28px) saturate(1.6); border: 1px solid rgba(255,255,255,0.8); }
+  .glass-hero::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(ellipse at 20% 20%, rgba(99,102,241,0.06) 0%, transparent 60%), radial-gradient(ellipse at 80% 80%, rgba(124,58,237,0.04) 0%, transparent 60%); pointer-events: none; }
+  .gradient-text { background: linear-gradient(135deg, #4f46e5, #7c3aed); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .dot-active { background: #10b981; box-shadow: 0 0 12px rgba(16,185,129,0.5); }
+  .dot-pending { background: #f59e0b; animation: pulse 2s cubic-bezier(0.4,0,0.6,1) infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2.5px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  .spinner-dark { border-color: rgba(79,70,229,0.2); border-top-color: #4f46e5; }
+  .tab-btn { position: relative; font-weight: 500; color: #94a3b8; cursor: pointer; transition: color 0.25s ease; white-space: nowrap; }
+  .tab-btn:hover { color: #475569; }
+  .tab-btn.active { color: #4f46e5; font-weight: 600; }
+  .tab-btn.active::after { content: ''; position: absolute; bottom: -2px; left: 0; right: 0; height: 2.5px; background: linear-gradient(90deg, #4f46e5, #7c3aed); border-radius: 2px 2px 0 0; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; animation: fadeUp 0.4s cubic-bezier(0.16,1,0.3,1); }
+  .progress-track { height: 6px; background: rgba(255,255,255,0.2); border-radius: 3px; overflow: hidden; }
+  .progress-fill { height: 100%; border-radius: 3px; transition: width 0.7s cubic-bezier(0.34,1.56,0.64,1), background 0.3s; }
+  .tx-item { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: #fff; border: 1px solid #f1f5f9; border-radius: 14px; transition: box-shadow 0.25s ease, transform 0.25s ease; box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+  .tx-item:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.05); transform: translateY(-1px); }
+  .tx-icon { width: 42px; height: 42px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .tx-icon.success { background: #ecfdf5; }
+  .tx-icon.blocked { background: #fef2f2; }
+  input, select, textarea { outline: none; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+  input:focus, select:focus, textarea:focus { border-color: #818cf8 !important; box-shadow: 0 0 0 4px rgba(79,70,229,0.08) !important; }
+  .btn-loading { pointer-events: none; opacity: 0.85; }
+  .shimmer { background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent); background-size: 200% 100%; animation: shimmer 3s infinite; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  @media (max-width: 1023px) { .layout-grid { grid-template-columns: 1fr !important; } .sidebar { max-height: none !important; } }
+  @media (max-width: 767px) {
+    .layout-grid { grid-template-rows: auto 1fr; }
+    .sidebar { flex-direction: row !important; overflow-x: auto !important; height: auto !important; max-height: none !important; padding: 12px !important; gap: 10px !important; }
+    .sidebar > * { min-width: 260px !important; flex-shrink: 0 !important; }
+    .glass-hero { padding: 14px !important; }
+    .glass-hero .font-display { font-size: 24px !important; }
+    .glass-hero .text-4xl { font-size: 24px !important; }
+    .tab-btn { font-size: 12px !important; padding: 10px 8px !important; }
+    main { padding: 12px !important; }
+    .glass-card { padding: 16px !important; }
+    .glass-card h2 { font-size: 18px !important; }
+    .grid-cols-2 { grid-template-columns: 1fr !important; }
+    header { padding-left: 16px !important; padding-right: 16px !important; }
+    #cooldown-card { min-width: 200px !important; }
+  }
+</style>
+</head>
+<body class="bg-[#f6f8fc] text-slate-900 font-sans antialiased min-h-screen">
+
+<!-- Toast container -->
+<div id="toast-container" class="fixed bottom-6 right-6 z-[999] flex flex-col-reverse gap-3 pointer-events-none" style="max-width: 380px;"></div>
+
+<header class="glass-strong sticky top-0 z-50 px-6 lg:px-10 h-16 flex items-center gap-4 shadow-[0_1px_0_rgba(0,0,0,0.03)]">
+  <div class="flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-indigo-200/50">B</div>
+    <span class="font-display text-xl font-extrabold tracking-tight text-slate-900">Bet<span class="gradient-text">Guard</span></span>
+  </div>
+  <span class="text-[11px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200/50 px-3 py-1 rounded-full tracking-wide">DEMO</span>
+  <div class="ml-auto flex items-center gap-3">
+    <span id="user-label" class="text-sm text-slate-400 font-medium">No user loaded</span>
+    <div id="user-avatar" class="w-8 h-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center text-slate-500 text-xs font-semibold shrink-0">?</div>
+  </div>
+</header>
+
+<div class="layout-grid grid grid-cols-1 lg:grid-cols-[380px_1fr] h-[calc(100vh-64px)] max-w-[1440px] mx-auto">
+  
+  <aside class="sidebar overflow-y-auto p-4 lg:p-6 lg:pr-3 lg:border-r border-gray-100/70 flex flex-col gap-4 bg-white/30 lg:bg-transparent max-h-[50vh] lg:max-h-none">
+    
+    <!-- Wallet Hero Glass Card -->
+    <div class="glass-hero relative rounded-2xl p-6 shadow-glass-lg overflow-hidden">
+      <div class="relative z-10">
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Weekly wallet</span>
+          <span class="text-[10px] font-medium text-slate-300 bg-white/30 px-2.5 py-0.5 rounded-full">BetGuard</span>
+        </div>
+        <div class="font-display text-4xl font-extrabold tracking-tight text-slate-900 mt-2" id="wallet-balance">₦—</div>
+        <div class="text-sm text-slate-400 mt-1 font-medium" id="wallet-reset">Loading...</div>
+        <div class="mt-5">
+          <div class="flex justify-between text-xs mb-1.5">
+            <span class="text-slate-400 font-medium">Weekly limit</span>
+            <span class="text-slate-700 font-semibold" id="budget-label">—</span>
+          </div>
+          <div class="progress-track bg-white/40">
+            <div class="progress-fill" id="budget-fill" style="width:0%;background:#10b981"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mandate Card -->
+    <div class="glass rounded-2xl p-5 shadow-glass">
+      <div class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 mb-3">Mandate</div>
+      <div class="flex items-center gap-3">
+        <div id="mandate-dot" class="dot-pending w-2.5 h-2.5 rounded-full shrink-0"></div>
+        <span id="mandate-text" class="text-sm text-slate-500 font-medium">Not created</span>
+      </div>
+    </div>
+
+    <!-- Cooldown Card -->
+    <div id="cooldown-card" class="glass rounded-2xl p-5 shadow-glass">
+      <div class="flex items-center justify-between mb-3">
+        <div class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Cooldown</div>
+        <button id="cooldown-settings-btn" class="text-[11px] text-indigo-500 hover:text-indigo-600 font-semibold transition-colors hidden" onclick="toggleCooldownForm()">Settings</button>
+      </div>
+      <div id="cooldown-body">
+        <div id="cooldown-state" class="text-sm text-slate-500 font-medium">Load a user</div>
+      </div>
+      <!-- Inline cooldown settings form (hidden by default) -->
+      <div id="cooldown-form" class="hidden mt-3 pt-3 border-t border-white/40">
+        <label class="text-xs font-semibold text-slate-500 tracking-wide block mb-2">Minutes between bets</label>
+        <div class="flex gap-2 flex-wrap">
+          <button class="cooldown-option px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600 transition-all" data-minutes="0">Off</button>
+          <button class="cooldown-option px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600 transition-all" data-minutes="10">10m</button>
+          <button class="cooldown-option px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600 transition-all" data-minutes="30">30m</button>
+          <button class="cooldown-option px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600 transition-all" data-minutes="60">60m</button>
+          <button class="cooldown-option px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600 transition-all" data-minutes="120">120m</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stats Card -->
+    <div class="glass rounded-2xl p-5 shadow-glass">
+      <div class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 mb-4">This week</div>
+      <div class="space-y-0.5">
+        <div class="flex justify-between items-center py-2.5 border-b border-gray-100">
+          <span class="text-sm text-slate-400">Spent</span>
+          <span class="text-sm font-semibold text-slate-700" id="stat-spent">₦0</span>
+        </div>
+        <div class="flex justify-between items-center py-2.5 border-b border-gray-100">
+          <span class="text-sm text-slate-400">Remaining</span>
+          <span class="text-sm font-semibold" id="stat-remaining">—</span>
+        </div>
+        <div class="flex justify-between items-center py-2.5 border-b border-gray-100">
+          <span class="text-sm text-slate-400">Bets placed</span>
+          <span class="text-sm font-semibold text-slate-700" id="stat-bets">0</span>
+        </div>
+        <div class="flex justify-between items-center py-2.5">
+          <span class="text-sm text-slate-400">% used</span>
+          <span class="text-sm font-semibold text-slate-700" id="stat-pct">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="user-id-display" class="text-[11px] text-slate-300 break-all font-mono px-1"></div>
+  </aside>
+
+  <main class="overflow-y-auto bg-white/20 lg:pl-3 lg:pr-6 p-4 lg:p-6">
+    
+    <div class="glass rounded-xl px-1 shadow-glass flex gap-1 overflow-x-auto mb-5" style="padding: 3px;">
+      <button class="tab-btn active flex-1 text-center py-2.5 px-4 text-sm rounded-lg transition-all" data-tab="onboard">Onboard</button>
+      <button class="tab-btn flex-1 text-center py-2.5 px-4 text-sm rounded-lg transition-all" data-tab="bet">Place Bet</button>
+      <button class="tab-btn flex-1 text-center py-2.5 px-4 text-sm rounded-lg transition-all" data-tab="history">History</button>
+      <button class="tab-btn flex-1 text-center py-2.5 px-4 text-sm rounded-lg transition-all" data-tab="demo">Demo Flow</button>
+    </div>
+
+    <!-- Onboard -->
+    <div class="tab-panel active" id="tab-onboard">
+      <div class="glass-card rounded-2xl p-6 lg:p-8 shadow-glass max-w-2xl">
+        <h2 class="font-display text-2xl font-bold tracking-tight text-slate-900">Create a BetGuard account</h2>
+        <p class="text-sm text-slate-400 mt-2 leading-relaxed max-w-lg">This creates a ring-fenced virtual wallet + a Direct Debit mandate authorised via NIBSS. The mandate auto-loads the weekly budget each Monday.</p>
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-semibold text-slate-500 tracking-wide">Full name</label>
+            <input id="ob-name" placeholder="Ademola Adelakin" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-semibold text-slate-500 tracking-wide">Phone</label>
+            <input id="ob-phone" placeholder="08012345678" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+          </div>
+          <div class="flex flex-col gap-1.5 md:col-span-2">
+            <label class="text-xs font-semibold text-slate-500 tracking-wide">Email</label>
+            <input id="ob-email" placeholder="ademola@example.com" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+          </div>
+          <div class="flex flex-col gap-1.5 md:col-span-2">
+            <label class="text-xs font-semibold text-slate-500 tracking-wide">Weekly budget (₦)</label>
+            <input id="ob-budget" type="number" placeholder="5000" min="500" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-semibold text-slate-500 tracking-wide">Bank account number</label>
+            <input id="ob-acct" placeholder="0123456789" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-semibold text-slate-500 tracking-wide">Bank code</label>
+            <select id="ob-bank" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-[length:14px] bg-[right_14px_center] bg-no-repeat focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+              <option value="057">Zenith Bank</option>
+              <option value="011">First Bank</option>
+              <option value="058">GTBank</option>
+              <option value="033">UBA</option>
+              <option value="050">Ecobank</option>
+              <option value="044">Access Bank</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1.5 md:col-span-2">
+            <label class="text-xs font-semibold text-slate-500 tracking-wide">Address</label>
+            <input id="ob-address" placeholder="12 Marina Street, Lagos" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+          </div>
+        </div>
+        <button class="btn-primary mt-6 w-full" onclick="handleOnboard()">
+          <span class="inline-flex items-center justify-center gap-2 w-full py-3 px-6 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-sm rounded-xl shadow-md hover:shadow-lg hover:shadow-indigo-200/50 transition-all duration-200 active:scale-[0.98]">Create account & mandate</span>
+        </button>
+        <div class="alert mt-5" id="ob-alert"></div>
+      </div>
+    </div>
+
+    <!-- Place Bet -->
+    <div class="tab-panel" id="tab-bet">
+      <div class="glass-card rounded-2xl p-6 lg:p-8 shadow-glass max-w-2xl">
+        <h2 class="font-display text-2xl font-bold tracking-tight text-slate-900">Place a bet</h2>
+        <p class="text-sm text-slate-400 mt-2 leading-relaxed max-w-lg">Funds leave your BetGuard wallet and go directly to your betting account. The gate blocks any bet that exceeds your weekly budget — no override possible.</p>
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="flex flex-col gap-1.5 md:col-span-2">
+            <label class="text-xs font-semibold text-slate-500 tracking-wide">Betting provider</label>
+            <select id="bet-provider" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2024%2024%22%20fill%3D%22none%22%20stroke%3D%22%2394a3b8%22%20stroke-width%3D%222%22%3E%3Cpath%20d%3D%22m6%209%206%206%206-6%22%2F%3E%3C%2Fsvg%3E')] bg-[length:14px] bg-[right_14px_center] bg-no-repeat focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+              <option value="bet9ja">Bet9ja</option>
+              <option value="sportybet">SportyBet</option>
+              <option value="1xbet">1xBet</option>
+            </select>
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-semibold text-slate-500 tracking-wide">Your betting account ID</label>
+            <input id="bet-customer" placeholder="e.g. 1234567" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-semibold text-slate-500 tracking-wide">Amount (₦)</label>
+            <input id="bet-amount" type="number" placeholder="500" min="100" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+          </div>
+        </div>
+        <button class="btn-primary mt-6 w-full" onclick="handlePlaceBet()">
+          <span class="inline-flex items-center justify-center gap-2 w-full py-3 px-6 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-sm rounded-xl shadow-md hover:shadow-lg hover:shadow-indigo-200/50 transition-all duration-200 active:scale-[0.98]">Place bet via BetGuard</span>
+        </button>
+        <div class="alert mt-5" id="bet-alert"></div>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="tab-panel" id="tab-history">
+      <div class="glass-card rounded-2xl p-6 lg:p-8 shadow-glass">
+        <h2 class="font-display text-2xl font-bold tracking-tight text-slate-900">Transaction history</h2>
+        <!-- Chart canvas -->
+        <div class="mt-5 mb-6" style="position:relative;height:200px;width:100%">
+          <canvas id="spending-chart"></canvas>
+        </div>
+        <div class="tx-list space-y-2" id="tx-list">
+          <p class="text-sm text-slate-400">No transactions yet.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Demo Flow -->
+    <div class="tab-panel" id="tab-demo">
+      <div class="glass-card rounded-2xl p-6 lg:p-8 shadow-glass max-w-2xl">
+        <h2 class="font-display text-2xl font-bold tracking-tight text-slate-900">Judges demo flow</h2>
+        <div class="mt-4 p-4 bg-indigo-50/60 border border-indigo-100/50 rounded-xl text-sm text-indigo-600 font-medium flex items-center gap-2.5">
+          <span class="text-lg">⚡</span>
+          Use this tab to walk judges through the complete BetGuard story in under 2 minutes.
+        </div>
+        <div class="mt-6 space-y-6">
+          <div>
+            <label class="text-xs font-semibold text-slate-500 tracking-wide mb-2 block">Step 1 — load an existing user</label>
+            <input id="demo-userid" placeholder="Paste userId from onboarding response" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+            <button class="mt-3 w-full" onclick="loadUser()">
+              <span class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-5 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98]">Load user & refresh wallet</span>
+            </button>
+          </div>
+          <div class="border-t border-gray-100/80 pt-6">
+            <p class="font-semibold text-sm text-slate-700 mb-1">Step 2 — simulate weekly auto-topup</p>
+            <p class="text-sm text-slate-400 mb-3">Manually triggers the Monday cron: debit mandate → credit wallet → reset spend tracker.</p>
+            <button class="w-full" onclick="triggerCycle()">
+              <span class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-5 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98]">Run weekly cycle now</span>
+            </button>
+          </div>
+          <div class="border-t border-gray-100/80 pt-6">
+            <p class="font-semibold text-sm text-slate-700 mb-1">Step 3 — show the gate in action</p>
+            <p class="text-sm text-slate-400 mb-3">Place a bet within budget (passes), then one that exceeds it (blocked). Judges see the wall go up.</p>
+            <div class="grid grid-cols-2 gap-3">
+              <button onclick="demoGoodBet()">
+                <span class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-5 bg-white hover:bg-emerald-50 text-emerald-700 font-semibold text-sm rounded-xl border border-emerald-200/60 shadow-sm hover:shadow-md hover:border-emerald-300/60 transition-all duration-200 active:scale-[0.98]">Place ₦1,000 bet</span>
+              </button>
+              <button onclick="demoBadBet()">
+                <span class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-5 bg-white hover:bg-red-50 text-red-600 font-semibold text-sm rounded-xl border border-red-200/60 shadow-sm hover:shadow-md hover:border-red-300/60 transition-all duration-200 active:scale-[0.98]">Try ₦99,999 bet</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="alert mt-5" id="demo-alert"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+let currentUserId = null;
+let spendingChart = null;
+let sseConnection = null;
+let cooldownTimer = null;
+let isCooldownFormOpen = false;
+
+// ── Tab switching ──
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const name = btn.dataset.tab;
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    if (name === 'history') { loadHistory(); renderChart(); }
+  });
+});
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.tab-btn[data-tab="${name}"]`).classList.add('active');
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  if (name === 'history') { loadHistory(); renderChart(); }
+}
+
+// ── Toast system ──
+function showToast(type, title, message) {
+  const container = document.getElementById('toast-container');
+  const icons = { success: '✅', error: '❌', warning: '⚠️', blocked: '🚫', info: 'ℹ️' };
+  const colors = {
+    success: 'bg-emerald-50 border-emerald-200/60 text-emerald-700',
+    error: 'bg-red-50 border-red-200/60 text-red-600',
+    warning: 'bg-amber-50 border-amber-200/60 text-amber-700',
+    blocked: 'bg-red-50 border-2 border-red-300/60 text-red-700',
+    info: 'bg-indigo-50 border-indigo-200/60 text-indigo-600',
+  };
+
+  const toast = document.createElement('div');
+  toast.className = `glass-strong pointer-events-auto rounded-xl p-4 border shadow-lg flex items-start gap-3 animate-fade-up transition-all duration-300 ${colors[type] || colors.info}`;
+  toast.style.minWidth = '300px';
+  toast.style.transform = 'translateX(120%)';
+  toast.style.transition = 'transform 0.4s cubic-bezier(0.16,1,0.3,1)';
+
+  toast.innerHTML = `
+    <span class="text-base shrink-0 mt-0.5">${icons[type] || 'ℹ️'}</span>
+    <div class="flex-1 min-w-0">
+      <div class="text-sm font-semibold">${title}</div>
+      ${message ? `<div class="text-sm opacity-80 mt-0.5">${message}</div>` : ''}
+    </div>
+    <button class="text-slate-400 hover:text-slate-600 shrink-0 text-lg leading-none" onclick="this.closest('.glass-strong').remove()">×</button>
+  `;
+
+  container.appendChild(toast);
+
+  // Slide in
+  requestAnimationFrame(() => { toast.style.transform = 'translateX(0)'; });
+
+  // Enforce max 3 toasts visible
+  while (container.children.length > 3) {
+    container.removeChild(container.firstChild);
+  }
+
+  // Auto-dismiss after 4s
+  setTimeout(() => {
+    toast.style.transform = 'translateX(120%)';
+    toast.style.opacity = '0';
+    setTimeout(() => toast.remove(), 400);
+  }, 4000);
+}
+
+// ── SSE connection ──
+function connectSSE(userId) {
+  if (sseConnection) {
+    sseConnection.close();
+    sseConnection = null;
+  }
+
+  if (!userId) return;
+
+  const es = new EventSource(`/api/events/${userId}`);
+  sseConnection = es;
+
+  es.addEventListener('connected', () => {
+    console.log('[SSE] Connected');
+  });
+
+  es.addEventListener('wallet:topup', (e) => {
+    const data = JSON.parse(e.data);
+    showToast('success', `₦${(data.amount || 0).toLocaleString()} loaded to wallet`);
+    refreshWallet();
+  });
+
+  es.addEventListener('bet:success', (e) => {
+    const data = JSON.parse(e.data);
+    showToast('success', `Bet placed`, `₦${(data.amount || 0).toLocaleString()} — ${data.remaining?.toLocaleString() ? '₦' + data.remaining.toLocaleString() + ' remaining' : ''}`);
+    refreshWallet();
+  });
+
+  es.addEventListener('bet:blocked', (e) => {
+    const data = JSON.parse(e.data);
+    const reason = data.reason === 'COOLDOWN_ACTIVE' ? 'Cooldown active' : 'Budget exhausted';
+    showToast('blocked', `Bet blocked — ${reason}`, data.minutesRemaining ? `${data.minutesRemaining} min remaining` : '');
+    // Pulse budget bar red
+    const fill = document.getElementById('budget-fill');
+    if (fill) {
+      fill.style.transition = 'none';
+      fill.style.background = '#ef4444';
+      setTimeout(() => {
+        fill.style.transition = '';
+        refreshWallet();
+      }, 1500);
+    }
+    refreshWallet();
+  });
+
+  es.addEventListener('mandate:ready', () => {
+    showToast('success', 'Mandate activated!', 'Your BetGuard wallet is ready.');
+    refreshWallet();
+  });
+
+  es.onerror = () => {
+    console.warn('[SSE] Connection error, will retry...');
+  };
+}
+
+// ── Alert system ──
+function showAlert(id, type, msg) {
+  const el = document.getElementById(id);
+  const colors = {
+    success: 'bg-emerald-50 border-emerald-200/60 text-emerald-700',
+    error: 'bg-red-50 border-red-200/60 text-red-600',
+    warning: 'bg-amber-50 border-amber-200/60 text-amber-700',
+    blocked: 'bg-red-50 border-2 border-red-300/60 text-red-700'
+  };
+  const icons = { success: '✅', error: '❌', warning: '⚠️', blocked: '🚫' };
+  el.className = `alert flex items-start gap-3 p-4 rounded-xl border text-sm leading-relaxed ${colors[type] || colors.success}`;
+  el.style.display = 'flex';
+  el.innerHTML = `<span class="text-base shrink-0 mt-0.5">${icons[type] || ''}</span><div>${msg}</div>`;
+}
+
+function setLoading(btnEl, loading) {
+  const span = btnEl.tagName === 'BUTTON' ? btnEl.querySelector('span') || btnEl : btnEl;
+  if (loading) {
+    btnEl.classList.add('btn-loading');
+    span._origText = span.innerHTML;
+    span.innerHTML = `<span class="spinner"></span>Processing...`;
+  } else {
+    btnEl.classList.remove('btn-loading');
+    span.innerHTML = span._origText || span.innerHTML;
+  }
+}
+
+// ── Onboard ──
+async function handleOnboard() {
+  const btn = event.currentTarget;
+  setLoading(btn, true);
+  const body = {
+    fullName: document.getElementById('ob-name').value,
+    phone: document.getElementById('ob-phone').value,
+    email: document.getElementById('ob-email').value,
+    weeklyBudget: parseFloat(document.getElementById('ob-budget').value),
+    bankAccountNumber: document.getElementById('ob-acct').value,
+    bankCode: document.getElementById('ob-bank').value,
+    address: document.getElementById('ob-address').value,
+  };
+
+  try {
+    const res = await fetch('/api/onboard', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Onboarding failed');
+
+    currentUserId = data.userId;
+    document.getElementById('user-label').textContent = body.fullName;
+    document.getElementById('user-id-display').textContent = `User ID: ${data.userId}`;
+    updateAvatar(body.fullName);
+    connectSSE(currentUserId);
+
+    showAlert('ob-alert', 'success',
+      `<strong>Account created!</strong><br><br>
+       <strong>Virtual wallet:</strong> ${data.wallet.accountNumber}<br>
+       <strong>Mandate ID:</strong> ${data.mandate.mandateId}<br><br>
+       <strong>Next step:</strong> ${data.mandate.activationInstructions}`
+    );
+    await refreshWallet();
+  } catch(e) {
+    showAlert('ob-alert', 'error', `<strong>${e.message}</strong>`);
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+// ── Place bet ──
+async function handlePlaceBet(opts = {}) {
+  if (!currentUserId) return showAlert('bet-alert', 'error', '<strong>Load a user first</strong> (Demo tab).');
+
+  const btn = opts.btn || event.currentTarget;
+  setLoading(btn, true);
+
+  const body = {
+    userId: currentUserId,
+    billerId: opts.billerId || document.getElementById('bet-provider').value,
+    customerId: opts.customerId || document.getElementById('bet-customer').value || 'demo123',
+    amount: opts.amount || parseFloat(document.getElementById('bet-amount').value),
+  };
+
+  const alertId = opts.alertId || 'bet-alert';
+
+  try {
+    const res = await fetch('/api/bet/place', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const data = await res.json();
+
+    if (res.status === 403 && data.blocked) {
+      showAlert(alertId, 'blocked',
+        `<strong>Bet blocked by BetGuard</strong><br>${data.message}<br>Wallet resets in <strong>${data.resetsIn}</strong>.`
+      );
+      // SSE will also fire with bet:blocked
+    } else if (!res.ok) {
+      throw new Error(data.error);
+    } else {
+      let msg = `<strong>₦${body.amount.toLocaleString()} sent to ${body.billerId}</strong><br>Remaining this week: ₦${data.wallet.remaining.toLocaleString()} (${100 - data.wallet.percentUsed}% left)`;
+      if (data.warning) msg += `<br><br>⚠️ ${data.warning.message}`;
+      showAlert(alertId, data.warning ? 'warning' : 'success', msg);
+    }
+
+    await refreshWallet();
+  } catch(e) {
+    showAlert(alertId, 'error', `<strong>${e.message}</strong>`);
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+// ── Wallet state ──
+async function refreshWallet() {
+  if (!currentUserId) return;
+  try {
+    const res = await fetch(`/api/wallet/${currentUserId}`);
+    const { wallet, mandate, user: userInfo } = await res.json();
+
+    const pct = wallet.percentUsed;
+    document.getElementById('wallet-balance').textContent = `₦${wallet.remaining.toLocaleString()}`;
+    document.getElementById('wallet-reset').textContent = `Resets in ${wallet.resetsIn}`;
+    document.getElementById('budget-label').textContent = `₦${wallet.weeklySpent.toLocaleString()} / ₦${wallet.weeklyBudget.toLocaleString()}`;
+    document.getElementById('budget-fill').style.width = pct + '%';
+    document.getElementById('budget-fill').style.background = pct >= 100 ? '#ef4444' : pct >= 80 ? '#f59e0b' : '#10b981';
+
+    document.getElementById('stat-spent').textContent = `₦${wallet.weeklySpent.toLocaleString()}`;
+    document.getElementById('stat-remaining').textContent = `₦${wallet.remaining.toLocaleString()}`;
+    document.getElementById('stat-bets').textContent = wallet.totalBets;
+    document.getElementById('stat-pct').textContent = pct + '%';
+    document.getElementById('stat-remaining').className = `text-sm font-semibold ${pct >= 100 ? 'text-red-500' : pct >= 80 ? 'text-amber-500' : 'text-emerald-600'}`;
+
+    const isReady = mandate.isReady;
+    document.getElementById('mandate-dot').className = `w-2.5 h-2.5 rounded-full shrink-0 ${isReady ? 'dot-active' : 'dot-pending'}`;
+    document.getElementById('mandate-text').textContent = isReady ? 'Active — wallet ready' : `${mandate.status} / ${mandate.adviceStatus}`;
+
+    if (userInfo) updateAvatar(userInfo.fullName);
+
+    // Update cooldown card
+    updateCooldownDisplay(wallet.cooldown, userInfo?.cooldownMinutes);
+
+    // Update user ID
+    const uidEl = document.getElementById('user-id-display');
+    if (uidEl && !uidEl.textContent.includes(currentUserId)) {
+      uidEl.textContent = `User ID: ${currentUserId}`;
+    }
+  } catch(e) { console.error('wallet refresh', e); }
+}
+
+function updateAvatar(name) {
+  const avatar = document.getElementById('user-avatar');
+  if (name && name !== 'No user loaded') {
+    const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    avatar.textContent = initials;
+    avatar.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-xs font-semibold shrink-0';
+  }
+}
+
+// ── Cooldown ──
+function updateCooldownDisplay(cooldown, cooldownMinutes) {
+  const body = document.getElementById('cooldown-body');
+  const settingsBtn = document.getElementById('cooldown-settings-btn');
+
+  if (cooldownMinutes === undefined || cooldownMinutes === null) {
+    body.innerHTML = '<div class="text-sm text-slate-500 font-medium">Load a user</div>';
+    settingsBtn.classList.add('hidden');
+    return;
+  }
+
+  settingsBtn.classList.remove('hidden');
+
+  if (cooldownMinutes === 0) {
+    body.innerHTML = `<div class="text-sm text-slate-500 font-medium">No cooldown set</div>`;
+    stopCooldownTimer();
+  } else if (cooldown.active) {
+    const totalSecs = cooldown.remainingSeconds || 0;
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    body.innerHTML = `
+      <div class="flex items-center gap-3">
+        <div class="relative w-12 h-12">
+          <svg class="w-12 h-12 -rotate-90" viewBox="0 0 36 36">
+            <circle cx="18" cy="18" r="15.5" fill="none" stroke="#e2e8f0" stroke-width="3"/>
+            <circle id="cooldown-ring" cx="18" cy="18" r="15.5" fill="none" stroke="#f59e0b" stroke-width="3"
+              stroke-dasharray="97.4" stroke-dashoffset="0" stroke-linecap="round"/>
+          </svg>
+          <span id="cooldown-timer" class="absolute inset-0 flex items-center justify-center text-xs font-bold text-amber-500">${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}</span>
+        </div>
+        <div>
+          <div class="text-sm font-semibold text-slate-700">Cooldown active</div>
+          <div class="text-xs text-slate-400">${cooldownMinutes} min between bets</div>
+        </div>
+      </div>
+    `;
+    startCooldownTimer(cooldown);
+  } else {
+    body.innerHTML = `<div class="text-sm text-emerald-600 font-medium">Ready — ${cooldownMinutes}min cooldown</div>`;
+    stopCooldownTimer();
+  }
+}
+
+function startCooldownTimer(cooldown) {
+  stopCooldownTimer();
+  let remainingMs = cooldown.remainingMs || 0;
+  const totalMs = cooldown.cooldownMinutes * 60 * 1000;
+  const circumference = 97.4;
+
+  cooldownTimer = setInterval(() => {
+    remainingMs -= 1000;
+    if (remainingMs <= 0) {
+      stopCooldownTimer();
+      refreshWallet();
+      return;
+    }
+    const totalSecs = Math.ceil(remainingMs / 1000);
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    const timerEl = document.getElementById('cooldown-timer');
+    const ringEl = document.getElementById('cooldown-ring');
+    if (timerEl) timerEl.textContent = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+    if (ringEl) {
+      const offset = circumference * (1 - remainingMs / totalMs);
+      ringEl.setAttribute('stroke-dashoffset', offset);
+    }
+  }, 1000);
+}
+
+function stopCooldownTimer() {
+  if (cooldownTimer) {
+    clearInterval(cooldownTimer);
+    cooldownTimer = null;
+  }
+}
+
+function toggleCooldownForm() {
+  const form = document.getElementById('cooldown-form');
+  isCooldownFormOpen = !isCooldownFormOpen;
+  form.classList.toggle('hidden', !isCooldownFormOpen);
+}
+
+document.addEventListener('click', function(e) {
+  const option = e.target.closest('.cooldown-option');
+  if (!option || !currentUserId) return;
+  const minutes = parseInt(option.dataset.minutes);
+
+  fetch(`/api/wallet/${currentUserId}/cooldown`, {
+    method: 'PATCH',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ cooldownMinutes: minutes })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      showToast('info', minutes > 0 ? `Cooldown set to ${minutes} min` : 'Cooldown disabled');
+      refreshWallet();
+      if (minutes === 0) document.getElementById('cooldown-form').classList.add('hidden');
+    }
+  })
+  .catch(err => showToast('error', 'Failed to set cooldown'));
+});
+
+// ── History ──
+async function loadHistory() {
+  if (!currentUserId) return;
+  try {
+    const res = await fetch(`/api/wallet/${currentUserId}/history`);
+    const { transactions } = await res.json();
+    const list = document.getElementById('tx-list');
+
+    if (!transactions.length) { list.innerHTML = '<p class="text-sm text-slate-400">No transactions yet.</p>'; return; }
+
+    list.innerHTML = transactions.map(tx => {
+      const isBlocked = tx.status === 'BLOCKED';
+      const isCredit = tx.type === 'WALLET_TOPUP';
+      const icon = isBlocked ? '🚫' : isCredit ? '⬇️' : '🎲';
+      const iconClass = isBlocked ? 'blocked' : 'success';
+      const amtColor = isBlocked ? 'text-slate-300 line-through' : isCredit ? 'text-emerald-600' : 'text-red-500';
+      const amtPrefix = isBlocked ? '' : isCredit ? '+' : '-';
+      return `<div class="tx-item">
+        <div class="tx-icon ${iconClass}">${icon}</div>
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-semibold text-slate-700">${tx.type.replace('_',' ')} ${tx.provider ? `— ${tx.provider}` : ''}</div>
+          <div class="text-xs text-slate-400 mt-0.5">${new Date(tx.createdAt).toLocaleString()}</div>
+        </div>
+        <div class="text-sm font-bold ${amtColor}">${amtPrefix}₦${tx.amount.toLocaleString()}</div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('load history', e); }
+}
+
+// ── Chart ──
+async function renderChart() {
+  if (!currentUserId) return;
+  try {
+    const res = await fetch(`/api/wallet/${currentUserId}/insights`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const dailySpend = data.dailySpend || [];
+    const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const amounts = dailySpend.map(d => d.amount || 0);
+
+    const ctx = document.getElementById('spending-chart');
+    if (!ctx) return;
+
+    if (spendingChart) { spendingChart.destroy(); spendingChart = null; }
+
+    spendingChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Spent (₦)',
+          data: amounts,
+          backgroundColor: amounts.map(a => {
+            if (a === 0) return 'rgba(148,163,184,0.15)';
+            // Color based on % of daily share (weeklyBudget / 7)
+            const dailyShare = 5000 / 7; // fallback if no budget known
+            const pct = dailyShare > 0 ? (a / dailyShare) * 100 : 0;
+            if (pct > 80) return 'rgba(239,68,68,0.6)';
+            if (pct > 50) return 'rgba(245,158,11,0.6)';
+            return 'rgba(16,185,129,0.6)';
+          }),
+          borderColor: amounts.map(a => {
+            if (a === 0) return 'rgba(148,163,184,0.3)';
+            const dailyShare = 5000 / 7;
+            const pct = dailyShare > 0 ? (a / dailyShare) * 100 : 0;
+            if (pct > 80) return 'rgba(239,68,68,1)';
+            if (pct > 50) return 'rgba(245,158,11,1)';
+            return 'rgba(16,185,129,1)';
+          }),
+          borderWidth: 1,
+          borderRadius: 4,
+          barPercentage: 0.7,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `₦${ctx.raw.toLocaleString()}`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(148,163,184,0.1)' },
+            ticks: {
+              color: '#94a3b8',
+              font: { size: 11 },
+              callback: (v) => '₦' + v.toLocaleString()
+            }
+          },
+          x: {
+            grid: { display: false },
+            ticks: {
+              color: '#94a3b8',
+              font: { size: 11 }
+            }
+          }
+        }
+      }
+    });
+  } catch(e) { console.error('chart render', e); }
+}
+
+// ── Demo helpers ──
+async function loadUser() {
+  const id = document.getElementById('demo-userid').value.trim();
+  if (!id) return;
+  currentUserId = id;
+  document.getElementById('user-id-display').textContent = `User ID: ${id}`;
+  connectSSE(currentUserId);
+  await refreshWallet();
+  showAlert('demo-alert', 'success', '<strong>User loaded.</strong> Wallet refreshed.');
+  showToast('info', 'User loaded', 'SSE connected');
+}
+
+async function triggerCycle() {
+  const btn = event.currentTarget;
+  setLoading(btn, true);
+  try {
+    const res = await fetch('/api/admin/trigger-cycle', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ userId: currentUserId })
+    });
+    const data = await res.json();
+    showAlert('demo-alert', 'success', `Cycle run: ${JSON.stringify(data.results)}`);
+    await refreshWallet();
+  } catch(e) {
+    showAlert('demo-alert', 'error', `<strong>${e.message}</strong>`);
+  } finally { setLoading(btn, false); }
+}
+
+async function demoGoodBet() {
+  const btns = document.querySelectorAll('#tab-demo button');
+  const targetBtn = btns[btns.length - 2];
+  await handlePlaceBet({ amount: 1000, billerId: 'bet9ja', customerId: 'demo123', btn: targetBtn, alertId: 'demo-alert' });
+}
+
+async function demoBadBet() {
+  const btns = document.querySelectorAll('#tab-demo button');
+  const targetBtn = btns[btns.length - 1];
+  await handlePlaceBet({ amount: 99999, billerId: 'bet9ja', customerId: 'demo123', btn: targetBtn, alertId: 'demo-alert' });
+}
+
+setInterval(() => { if (currentUserId) refreshWallet(); }, 30000);
+</script>
+</body>
+</html>
