@@ -1,4 +1,4 @@
-// src/routes/webhooks.js — Nomba payment event receiver with SSE emission
+// src/routes/webhooks.js — Nomba payment event receiver with SSE emission (async)
 
 const express = require("express");
 const db = require("../models/db");
@@ -27,13 +27,13 @@ async function handleEvent(event) {
       if (!ref) break;
 
       const userId = ref.replace("betguard_", "");
-      const wallet = db.getWallet(userId);
+      const wallet = await db.getWallet(userId);
       if (!wallet) break;
 
       const amount = parseFloat(data.amount);
       console.log(`✅ Wallet topped up for user ${userId}: ₦${amount}`);
 
-      db.recordTransaction({
+      await db.recordTransaction({
         userId,
         type: "WALLET_TOPUP",
         amount,
@@ -43,8 +43,7 @@ async function handleEvent(event) {
         nombaRef: data.transactionRef || data.reference,
       });
 
-      // Emit SSE
-      const updatedWallet = db.getWallet(userId);
+      const updatedWallet = await db.getWallet(userId);
       emit(userId, "wallet:topup", {
         amount,
         newBalance: updatedWallet?.weeklyBudget

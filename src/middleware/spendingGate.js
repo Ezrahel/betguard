@@ -1,10 +1,11 @@
-// src/middleware/spendingGate.js — Budget enforcement + cooldown gate with SSE
+// src/middleware/spendingGate.js — Budget enforcement + cooldown gate with SSE (async)
 
 const db = require("../models/db");
 const { emit } = require("../routes/events");
 
-function spendingGate(req, res, next) {
-  const { userId, amount } = req.body;
+async function spendingGate(req, res, next) {
+  const userId = req.userId;
+  const { amount } = req.body;
 
   if (!userId || !amount) {
     return res.status(400).json({ error: "userId and amount are required." });
@@ -15,17 +16,17 @@ function spendingGate(req, res, next) {
     return res.status(400).json({ error: "amount must be a positive number." });
   }
 
-  const user = db.getUser(userId);
+  const user = await db.getUser(userId);
   if (!user) {
     return res.status(404).json({ error: "User not found." });
   }
 
-  const wallet = db.getWallet(userId);
+  const wallet = await db.getWallet(userId);
   if (!wallet) {
     return res.status(404).json({ error: "Wallet not found. Complete onboarding first." });
   }
 
-  const mandate = db.getMandate(userId);
+  const mandate = await db.getMandate(userId);
   if (!mandate || mandate.status !== "ACTIVE" || mandate.adviceStatus !== "ADVICE_SENT") {
     return res.status(403).json({
       error: "Mandate not active yet.",
@@ -39,7 +40,7 @@ function spendingGate(req, res, next) {
 
   // ── Gate 1: Budget check ──────────────────────────────────────────────────
   if (wallet.weeklySpent + betAmount > user.weeklyBudget) {
-    db.recordTransaction({
+    await db.recordTransaction({
       userId,
       type: "GATE_BLOCK",
       amount: betAmount,
@@ -76,7 +77,7 @@ function spendingGate(req, res, next) {
     if (remainingMs > 0) {
       const minutesRemaining = Math.ceil(remainingMs / 60000);
 
-      db.recordTransaction({
+      await db.recordTransaction({
         userId,
         type: "GATE_BLOCK",
         amount: betAmount,

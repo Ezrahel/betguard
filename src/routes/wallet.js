@@ -1,4 +1,4 @@
-// src/routes/wallet.js — Balance, history, budget, insights, cooldown
+// src/routes/wallet.js — Wallet state, history, insights, cooldown (auth-protected)
 
 const express = require("express");
 const nomba = require("../services/nomba");
@@ -6,30 +6,35 @@ const db = require("../models/db");
 const { computeInsights } = require("../services/insights");
 
 const router = express.Router();
-const SUB_ACCOUNT_ID = process.env.NOMBA_PARENT_ACCOUNT_ID;
+const ACCOUNT_ID = process.env.NOMBA_PARENT_ACCOUNT_ID;
 
-// GET /api/wallet/:userId
+// GET /api/wallet/:userId — overload: if userId === "me", use req.userId
 router.get("/:userId", async (req, res) => {
-  const { userId } = req.params;
+  const userId = req.params.userId === "me" ? req.userId : req.params.userId;
+  // Must be accessing own wallet
+  if (userId !== req.userId) {
+    return res.status(403).json({ error: "You can only view your own wallet." });
+  }
 
-  const user = db.getUser(userId);
-  const wallet = db.getWallet(userId);
-  const mandate = db.getMandate(userId);
+  const [user, wallet, mandate] = await Promise.all([
+    db.getUser(userId),
+    db.getWallet(userId),
+    db.getMandate(userId),
+  ]);
 
   if (!user || !wallet) {
-    return res.status(404).json({ error: "User or wallet not found." });
+    return res.status(404).json({ error: "User or wallet not found. Complete onboarding first." });
   }
 
   let liveBalance = null;
   try {
-    const acct = await nomba.getVirtualAccountBalance(wallet.nombaAccountRef, SUB_ACCOUNT_ID);
+    const acct = await nomba.getVirtualAccountBalance(wallet.nombaAccountRef, ACCOUNT_ID);
     liveBalance = acct.balance || acct.amount || acct.availableBalance || null;
   } catch (_) {}
 
   const remaining = user.weeklyBudget - wallet.weeklySpent;
   const percentUsed = Math.round((wallet.weeklySpent / user.weeklyBudget) * 100);
 
-  // Cooldown info
   const cooldownMinutes = user.cooldownMinutes || 0;
   let cooldownRemainingMs = 0;
   if (cooldownMinutes > 0 && wallet.lastBetAt) {
@@ -65,23 +70,27 @@ router.get("/:userId", async (req, res) => {
   });
 });
 
-// GET /api/wallet/:userId/history
-router.get("/:userId/history", (req, res) => {
-  const { userId } = req.params;
-  const txs = db.getUserTransactions(userId);
-  res.json({ transactions: txs.reverse() });
+router.get("/:userId/history", async (req, res) => {
+  const userId = req.params.userId === "me" ? req.userId : req.params.userId;
+  if (userId !== req.userId) {
+    return res.status(403).json({ error: "You can only view your own history." });
+  }
+  const txs = await db.getUserTransactions(userId);
+  res.json({ transactions: txs });
 });
 
-// PATCH /api/wallet/:userId/budget
-router.patch("/:userId/budget", (req, res) => {
-  const { userId } = req.params;
-  const { weeklyBudget } = req.body;
+router.patch("/:userId/budget", async (req, res) => {
+  const userId = req.params.userId === "me" ? req.userId : req.params.userId;
+  if (userId !== req.userId) {
+    return res.status(403).json({ error: "You can only update your own budget." });
+  }
 
+  const { weeklyBudget } = req.body;
   if (!weeklyBudget || weeklyBudget < 500) {
     return res.status(400).json({ error: "Minimum weekly budget is ₦500." });
   }
 
-  const user = db.updateUser(userId, { weeklyBudget });
+  const user = await db.updateUser(userId, { weeklyBudget });
   if (!user) return res.status(404).json({ error: "User not found." });
 
   res.json({
@@ -91,17 +100,19 @@ router.patch("/:userId/budget", (req, res) => {
   });
 });
 
-// PATCH /api/wallet/:userId/cooldown
-router.patch("/:userId/cooldown", (req, res) => {
-  const { userId } = req.params;
-  const { cooldownMinutes } = req.body;
+router.patch("/:userId/cooldown", async (req, res) => {
+  const userId = req.params.userId === "me" ? req.userId : req.params.userId;
+  if (userId !== req.userId) {
+    return res.status(403).json({ error: "You can only update your own cooldown." });
+  }
 
+  const { cooldownMinutes } = req.body;
   const valid = [0, 10, 30, 60, 120];
   if (!valid.includes(cooldownMinutes)) {
     return res.status(400).json({ error: "cooldownMinutes must be one of: 0, 10, 30, 60, 120" });
   }
 
-  const user = db.updateUser(userId, { cooldownMinutes });
+  const user = await db.updateUser(userId, { cooldownMinutes });
   if (!user) return res.status(404).json({ error: "User not found." });
 
   res.json({
@@ -113,10 +124,13 @@ router.patch("/:userId/cooldown", (req, res) => {
   });
 });
 
-// GET /api/wallet/:userId/insights
-router.get("/:userId/insights", (req, res) => {
-  const { userId } = req.params;
-  const insights = computeInsights(userId);
+router.get("/:userId/insights", async (req, res) => {
+  const userId = req.params.userId === "me" ? req.userId : req.params.userId;
+  if (userId !== req.userId) {
+    return res.status(403).json({ error: "You can only view your own insights." });
+  }
+
+  const insights = await computeInsights(userId);
   if (!insights) return res.status(404).json({ error: "User not found." });
   res.json(insights);
 });

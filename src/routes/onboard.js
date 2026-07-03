@@ -1,24 +1,22 @@
-// src/routes/onboard.js — User signup + mandate creation
+// src/routes/onboard.js — User signup + mandate creation (auth-protected)
+// req.userId is set by authMiddleware
 
 const express = require("express");
-const { v4: uuidv4 } = require("uuid");
 const nomba = require("../services/nomba");
 const db = require("../models/db");
 const { emit } = require("./events");
 
 const router = express.Router();
-const SUB_ACCOUNT_ID = process.env.NOMBA_PARENT_ACCOUNT_ID;
+const ACCOUNT_ID = process.env.NOMBA_PARENT_ACCOUNT_ID;
 
 router.post("/", async (req, res) => {
+  const userId = req.userId;
   const {
-    fullName, email, phone,
-    weeklyBudget,
-    bankAccountNumber,
-    bankCode,
-    address,
+    fullName, phone, weeklyBudget,
+    bankAccountNumber, bankCode, address,
   } = req.body;
 
-  if (!fullName || !email || !phone || !weeklyBudget || !bankAccountNumber || !bankCode) {
+  if (!fullName || !weeklyBudget || !bankAccountNumber || !bankCode) {
     return res.status(400).json({ error: "Missing required fields." });
   }
 
@@ -26,45 +24,62 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Minimum weekly budget is ₦500." });
   }
 
-  const userId = uuidv4();
-
   try {
-    const user = db.createUser({ id: userId, fullName, phone, email, weeklyBudget });
-
-    const virtualAccount = await nomba.createVirtualAccount({
-      userId,
-      userFullName: fullName,
-      subAccountId: SUB_ACCOUNT_ID,
+    // Update user profile with onboarding data
+    const user = await db.updateUser(userId, {
+      fullName, phone,
+      weeklyBudget,
     });
 
-    const acctRef = virtualAccount?.accountRef || `betguard_${userId}`;
-    const acctNum = virtualAccount?.accountNumber || virtualAccount?.nuban || "N/A";
+    // Create ring-fenced virtual account on Nomba
+    let virtualAccount;
+    try {
+      virtualAccount = await nomba.createVirtualAccount({
+        userId,
+        userFullName: fullName,
+        subAccountId: ACCOUNT_ID,
+      });
+    } catch (nombaErr) {
+      // Log but continue — we can still create the local wallet
+      console.error("Nomba virtual account creation failed:", nombaErr.message);
+      virtualAccount = null;
+    }
 
-    db.createWallet({
+    const acctRef = virtualAccount?.accountRef || `betguard_${userId}`;
+    const acctNum = virtualAccount?.bankAccountNumber || virtualAccount?.accountNumber || "N/A";
+
+    await db.createWallet({
       userId,
       nombaAccountRef: acctRef,
       nombaBankAccountNumber: acctNum,
     });
 
-    const merchantReference = `BG${Date.now()}`;
-    const mandate = await nomba.createMandate({
-      customerAccountNumber: bankAccountNumber,
-      bankCode,
-      customerName: fullName,
-      customerAddress: address || "Nigeria",
-      customerEmail: email,
-      customerPhoneNumber: phone,
-      merchantReference,
-      subAccountId: SUB_ACCOUNT_ID,
-    });
+    // Create Direct Debit mandate
+    let mandateResult;
+    try {
+      const merchantReference = `BG${Date.now()}`;
+      mandateResult = await nomba.createMandate({
+        customerAccountNumber: bankAccountNumber,
+        bankCode,
+        customerName: fullName,
+        customerAddress: address || "Nigeria",
+        customerEmail: req.userEmail || "",
+        customerPhoneNumber: phone || "",
+        merchantReference,
+        subAccountId: ACCOUNT_ID,
+      });
+    } catch (nombaErr) {
+      console.error("Nomba mandate creation failed:", nombaErr.message);
+      mandateResult = null;
+    }
 
-    const mandateId = mandate?.mandateId || mandate?.id || "N/A";
-    const mandateDesc = mandate?.description || mandate?.narration || "Transfer ₦50 to activate your mandate";
+    const mandateId = mandateResult?.mandateId || mandateResult?.id || "N/A";
+    const mandateDesc = mandateResult?.description || mandateResult?.narration || "Transfer ₦50 to activate your mandate";
 
-    db.saveMandateRecord({
+    await db.saveMandateRecord({
       userId,
       mandateId,
-      merchantReference,
+      merchantReference: `BG${Date.now()}`,
       description: mandateDesc,
     });
 
@@ -91,24 +106,23 @@ router.post("/", async (req, res) => {
 
 router.get("/mandate-status/:userId", async (req, res) => {
   const { userId } = req.params;
-  const mandate = db.getMandate(userId);
+  const mandate = await db.getMandate(userId);
 
   if (!mandate) {
     return res.status(404).json({ error: "No mandate found for this user." });
   }
 
   try {
-    const liveStatus = await nomba.getMandateStatus(mandate.mandateId, SUB_ACCOUNT_ID);
+    const liveStatus = await nomba.getMandateStatus(mandate.mandateId, ACCOUNT_ID);
 
     const status = (liveStatus.mandateStatus || liveStatus.status || "").toUpperCase();
     const advice = (liveStatus.mandateAdviceStatus || liveStatus.adviceStatus || "").replace(/[\s-]/g, "_").toUpperCase();
 
     const prevStatus = mandate.status;
-    db.updateMandateStatus(userId, { status, adviceStatus: advice });
+    await db.updateMandateStatus(userId, { status, adviceStatus: advice });
 
     const isReady = status === "ACTIVE" && advice === "ADVICE_SENT";
 
-    // Emit SSE if newly activated
     if (isReady && prevStatus !== "ACTIVE") {
       emit(userId, "mandate:ready", {});
     }
@@ -119,7 +133,7 @@ router.get("/mandate-status/:userId", async (req, res) => {
       adviceStatus: advice,
       isReady,
       message: isReady
-        ? "✅ Mandate is active. Your BetGuard wallet is ready!"
+        ? "✅ Mandate is active. Your BetSafe wallet is ready!"
         : "⏳ Still waiting for your bank to confirm. Check back in a few hours.",
     });
   } catch (err) {

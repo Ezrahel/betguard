@@ -1,202 +1,276 @@
-// src/models/db.js — File-backed persistent store
-// Loads from data/db.json on startup, writes on every mutation
-// Exported function signatures match the original in-memory store exactly
+// src/models/db.js — Supabase-backed data layer
+// All functions are async. Every caller was updated to await them.
 
-const fs = require("fs");
-const path = require("path");
-
-const DATA_DIR = path.join(__dirname, "../../data");
-const DB_PATH = path.join(DATA_DIR, "db.json");
-
-// ─── Internal state (loaded from / written to file) ─────────────────────────
-let state = {
-  users: [],       // array of user objects
-  wallets: [],     // array of wallet objects
-  mandates: [],    // array of mandate objects
-  transactions: [],// array of transaction objects
-};
-
-// ─── File I/O helpers ───────────────────────────────────────────────────────
-
-function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-}
-
-function loadFromFile() {
-  ensureDataDir();
-  try {
-    if (fs.existsSync(DB_PATH)) {
-      const raw = fs.readFileSync(DB_PATH, "utf-8");
-      const parsed = JSON.parse(raw);
-      state = {
-        users: parsed.users || [],
-        wallets: parsed.wallets || [],
-        mandates: parsed.mandates || [],
-        transactions: parsed.transactions || [],
-      };
-      console.log(`[db] Loaded ${state.users.length} users, ${state.transactions.length} transactions`);
-    } else {
-      console.log("[db] No db.json found — starting fresh");
-    }
-  } catch (err) {
-    console.error("[db] Corrupt db.json — starting fresh:", err.message);
-    state = { users: [], wallets: [], mandates: [], transactions: [] };
-  }
-}
-
-function flush() {
-  ensureDataDir();
-  const tmp = DB_PATH + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(state, null, 2), "utf-8");
-  fs.renameSync(tmp, DB_PATH);
-}
-
-function save() {
-  flush();
-}
-
-// Load on startup
-loadFromFile();
+const supabase = require("../services/supabase");
 
 // ─── Users ───────────────────────────────────────────────────────────────────
 
-function createUser({ id, fullName, phone, email, weeklyBudget }) {
-  const user = {
-    id,
-    fullName,
-    phone,
-    email,
-    weeklyBudget,
-    cooldownMinutes: 0,
-    streakWeeks: 0,
-    createdAt: new Date().toISOString(),
-  };
-  state.users.push(user);
-  save();
-  return user;
+async function createUser({ id, fullName, phone, email, weeklyBudget }) {
+  const { data, error } = await supabase
+    .from("users")
+    .upsert({
+      id,
+      full_name: fullName,
+      phone,
+      email,
+      weekly_budget: weeklyBudget,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[db] createUser error:", error);
+    throw error;
+  }
+  return mapUser(data);
 }
 
-function getUser(id) {
-  return state.users.find((u) => u.id === id) || null;
+async function getUser(id) {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[db] getUser error:", error);
+    return null;
+  }
+  return data ? mapUser(data) : null;
 }
 
-function updateUser(id, updates) {
-  const user = state.users.find((u) => u.id === id);
-  if (!user) return null;
-  Object.assign(user, updates);
-  save();
-  return user;
+async function updateUser(id, updates) {
+  const mapped = {};
+  if (updates.fullName !== undefined) mapped.full_name = updates.fullName;
+  if (updates.phone !== undefined) mapped.phone = updates.phone;
+  if (updates.email !== undefined) mapped.email = updates.email;
+  if (updates.weeklyBudget !== undefined) mapped.weekly_budget = updates.weeklyBudget;
+  if (updates.cooldownMinutes !== undefined) mapped.cooldown_minutes = updates.cooldownMinutes;
+  if (updates.streakWeeks !== undefined) mapped.streak_weeks = updates.streakWeeks;
+
+  const { data, error } = await supabase
+    .from("users")
+    .update(mapped)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[db] updateUser error:", error);
+    return null;
+  }
+  return data ? mapUser(data) : null;
 }
 
-function getAllUsers() {
-  return state.users;
+async function getAllUsers() {
+  const { data, error } = await supabase
+    .from("users")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("[db] getAllUsers error:", error);
+    return [];
+  }
+  return (data || []).map(mapUser);
 }
 
 // ─── Wallets ─────────────────────────────────────────────────────────────────
 
-function createWallet({ userId, nombaAccountRef, nombaBankAccountNumber }) {
-  const wallet = {
-    userId,
-    nombaAccountRef,
-    nombaBankAccountNumber,
-    weeklySpent: 0,
-    cycleStartDate: mondayOfThisWeek(),
-    totalBets: 0,
-    lastBetAt: null,
-    createdAt: new Date().toISOString(),
-  };
-  state.wallets.push(wallet);
-  save();
-  return wallet;
+async function createWallet({ userId, nombaAccountRef, nombaBankAccountNumber }) {
+  const { data, error } = await supabase
+    .from("wallets")
+    .insert({
+      user_id: userId,
+      nomba_account_ref: nombaAccountRef || "",
+      nomba_bank_account_number: nombaBankAccountNumber || "",
+      cycle_start_date: mondayOfThisWeek(),
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[db] createWallet error:", error);
+    throw error;
+  }
+  return mapWallet(data);
 }
 
-function getWallet(userId) {
-  return state.wallets.find((w) => w.userId === userId) || null;
+async function getWallet(userId) {
+  const { data, error } = await supabase
+    .from("wallets")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[db] getWallet error:", error);
+    return null;
+  }
+  return data ? mapWallet(data) : null;
 }
 
-function incrementSpend(userId, amount) {
-  const wallet = state.wallets.find((w) => w.userId === userId);
+async function incrementSpend(userId, amount) {
+  const wallet = await getWallet(userId);
   if (!wallet) return null;
-  wallet.weeklySpent += amount;
-  wallet.totalBets += 1;
-  wallet.lastBetAt = new Date().toISOString();
-  save();
-  return wallet;
+
+  const { data, error } = await supabase
+    .from("wallets")
+    .update({
+      weekly_spent: wallet.weeklySpent + amount,
+      total_bets: wallet.totalBets + 1,
+      last_bet_at: new Date().toISOString(),
+    })
+    .eq("user_id", userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[db] incrementSpend error:", error);
+    return null;
+  }
+  return data ? mapWallet(data) : null;
 }
 
-function resetWeeklyCycle(userId) {
-  const wallet = state.wallets.find((w) => w.userId === userId);
-  if (!wallet) return null;
-  wallet.weeklySpent = 0;
-  wallet.cycleStartDate = mondayOfThisWeek();
-  save();
-  return wallet;
+async function resetWeeklyCycle(userId) {
+  const { data, error } = await supabase
+    .from("wallets")
+    .update({
+      weekly_spent: 0,
+      cycle_start_date: mondayOfThisWeek(),
+    })
+    .eq("user_id", userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[db] resetWeeklyCycle error:", error);
+    return null;
+  }
+  return data ? mapWallet(data) : null;
 }
 
 // ─── Mandates ────────────────────────────────────────────────────────────────
 
-function saveMandateRecord({ userId, mandateId, merchantReference, description }) {
-  const record = {
-    userId,
-    mandateId,
-    merchantReference,
-    description,
-    status: "PENDING",
-    adviceStatus: "ADVICE_NOT_SENT",
-    createdAt: new Date().toISOString(),
-  };
-  // Remove old record for same userId if exists
-  const idx = state.mandates.findIndex((m) => m.userId === userId);
-  if (idx >= 0) state.mandates.splice(idx, 1);
-  state.mandates.push(record);
-  save();
-  return record;
+async function saveMandateRecord({ userId, mandateId, merchantReference, description }) {
+  // Delete old record if exists (upsert by user_id)
+  await supabase.from("mandates").delete().eq("user_id", userId);
+
+  const { data, error } = await supabase
+    .from("mandates")
+    .insert({
+      user_id: userId,
+      mandate_id: mandateId || "",
+      merchant_reference: merchantReference || "",
+      description: description || "",
+      status: "PENDING",
+      advice_status: "ADVICE_NOT_SENT",
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[db] saveMandateRecord error:", error);
+    throw error;
+  }
+  return mapMandate(data);
 }
 
-function getMandate(userId) {
-  return state.mandates.find((m) => m.userId === userId) || null;
+async function getMandate(userId) {
+  const { data, error } = await supabase
+    .from("mandates")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[db] getMandate error:", error);
+    return null;
+  }
+  return data ? mapMandate(data) : null;
 }
 
-function updateMandateStatus(userId, { status, adviceStatus }) {
-  const record = state.mandates.find((m) => m.userId === userId);
-  if (!record) return null;
-  if (status !== undefined) record.status = status;
-  if (adviceStatus !== undefined) record.adviceStatus = adviceStatus;
-  save();
-  return record;
+async function updateMandateStatus(userId, { status, adviceStatus }) {
+  const updates = {};
+  if (status !== undefined) updates.status = status;
+  if (adviceStatus !== undefined) updates.advice_status = adviceStatus;
+
+  const { data, error } = await supabase
+    .from("mandates")
+    .update(updates)
+    .eq("user_id", userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[db] updateMandateStatus error:", error);
+    return null;
+  }
+  return data ? mapMandate(data) : null;
 }
 
-function getAllMandates() {
-  return state.mandates;
+async function getAllMandates() {
+  const { data, error } = await supabase
+    .from("mandates")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("[db] getAllMandates error:", error);
+    return [];
+  }
+  return (data || []).map(mapMandate);
 }
 
 // ─── Transactions ─────────────────────────────────────────────────────────────
 
-function recordTransaction({ userId, type, amount, provider, customerId, status, nombaRef }) {
-  const tx = {
-    id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    userId,
-    type,
-    amount,
-    provider,
-    customerId,
-    status,
-    nombaRef,
-    createdAt: new Date().toISOString(),
-  };
-  state.transactions.push(tx);
-  save();
-  return tx;
+async function recordTransaction({ userId, type, amount, provider, customerId, status, nombaRef }) {
+  const { data, error } = await supabase
+    .from("transactions")
+    .insert({
+      user_id: userId,
+      type,
+      amount: amount || 0,
+      provider: provider || "",
+      customer_id: customerId || "",
+      status: status || "SUCCESS",
+      nomba_ref: nombaRef || "",
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("[db] recordTransaction error:", error);
+    throw error;
+  }
+  return mapTransaction(data);
 }
 
-function getUserTransactions(userId) {
-  return state.transactions.filter((t) => t.userId === userId);
+async function getUserTransactions(userId) {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[db] getUserTransactions error:", error);
+    return [];
+  }
+  return (data || []).map(mapTransaction);
 }
 
-function getAllTransactions() {
-  return state.transactions;
+async function getAllTransactions() {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("[db] getAllTransactions error:", error);
+    return [];
+  }
+  return (data || []).map(mapTransaction);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -216,8 +290,74 @@ function daysUntilNextMonday() {
   return day === 0 ? 1 : 8 - day;
 }
 
-function getUserCount() {
-  return state.users.length;
+async function getUserCount() {
+  const { count, error } = await supabase
+    .from("users")
+    .select("*", { count: "exact", head: true });
+
+  if (error) {
+    console.error("[db] getUserCount error:", error);
+    return 0;
+  }
+  return count || 0;
+}
+
+async function flush() {
+  // No-op with Supabase — writes are immediate
+}
+
+// ─── Mappers ─────────────────────────────────────────────────────────────────
+
+function mapUser(row) {
+  return {
+    id: row.id,
+    fullName: row.full_name,
+    phone: row.phone,
+    email: row.email,
+    weeklyBudget: Number(row.weekly_budget),
+    cooldownMinutes: row.cooldown_minutes || 0,
+    streakWeeks: row.streak_weeks || 0,
+    createdAt: row.created_at,
+  };
+}
+
+function mapWallet(row) {
+  return {
+    userId: row.user_id,
+    nombaAccountRef: row.nomba_account_ref,
+    nombaBankAccountNumber: row.nomba_bank_account_number,
+    weeklySpent: Number(row.weekly_spent),
+    cycleStartDate: row.cycle_start_date,
+    totalBets: row.total_bets || 0,
+    lastBetAt: row.last_bet_at,
+    createdAt: row.created_at,
+  };
+}
+
+function mapMandate(row) {
+  return {
+    userId: row.user_id,
+    mandateId: row.mandate_id,
+    merchantReference: row.merchant_reference,
+    description: row.description,
+    status: row.status,
+    adviceStatus: row.advice_status,
+    createdAt: row.created_at,
+  };
+}
+
+function mapTransaction(row) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    type: row.type,
+    amount: Number(row.amount),
+    provider: row.provider,
+    customerId: row.customer_id,
+    status: row.status,
+    nombaRef: row.nomba_ref,
+    createdAt: row.created_at,
+  };
 }
 
 module.exports = {

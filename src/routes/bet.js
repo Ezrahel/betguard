@@ -1,4 +1,4 @@
-// src/routes/bet.js — Gated bet placement with SSE emission
+// src/routes/bet.js — Gated bet placement (auth-protected)
 
 const express = require("express");
 const nomba = require("../services/nomba");
@@ -7,11 +7,11 @@ const { spendingGate } = require("../middleware/spendingGate");
 const { emit } = require("./events");
 
 const router = express.Router();
-const SUB_ACCOUNT_ID = process.env.NOMBA_PARENT_ACCOUNT_ID;
+const ACCOUNT_ID = process.env.NOMBA_PARENT_ACCOUNT_ID;
 
 router.get("/providers", async (req, res) => {
   try {
-    const providers = await nomba.getBettingProviders(SUB_ACCOUNT_ID);
+    const providers = await nomba.getBettingProviders(ACCOUNT_ID);
     res.json({ providers });
   } catch (err) {
     console.error("Providers error:", err.response?.data || err.message);
@@ -25,7 +25,7 @@ router.post("/verify-account", async (req, res) => {
     return res.status(400).json({ error: "billerId and customerId are required." });
   }
   try {
-    const info = await nomba.getBettingCustomerInfo({ billerId, customerId, subAccountId: SUB_ACCOUNT_ID });
+    const info = await nomba.getBettingCustomerInfo({ billerId, customerId, subAccountId: ACCOUNT_ID });
     res.json({ valid: true, accountInfo: info });
   } catch (err) {
     res.status(400).json({ valid: false, error: "Betting account not found. Check the ID and try again." });
@@ -41,14 +41,14 @@ router.post("/place", spendingGate, async (req, res) => {
       billerId,
       customerId,
       amount: betAmount,
-      subAccountId: SUB_ACCOUNT_ID,
-      payerName: user.fullName || user.fullname,
+      subAccountId: ACCOUNT_ID,
+      payerName: user.fullName,
       phoneNumber: user.phone,
     });
 
-    db.incrementSpend(userId, betAmount);
+    await db.incrementSpend(userId, betAmount);
 
-    db.recordTransaction({
+    await db.recordTransaction({
       userId,
       type: "BET_VEND",
       amount: betAmount,
@@ -58,10 +58,9 @@ router.post("/place", spendingGate, async (req, res) => {
       nombaRef: result?.transactionRef || result?.reference || null,
     });
 
-    const updatedWallet = db.getWallet(userId);
+    const updatedWallet = await db.getWallet(userId);
     const newRemaining = user.weeklyBudget - updatedWallet.weeklySpent;
 
-    // Emit SSE
     emit(userId, "bet:success", {
       amount: betAmount,
       provider: billerId,
@@ -88,7 +87,7 @@ router.post("/place", spendingGate, async (req, res) => {
   } catch (err) {
     console.error("Bet vend error:", err.response?.data || err.message);
 
-    db.recordTransaction({
+    await db.recordTransaction({
       userId,
       type: "BET_VEND",
       amount: betAmount,

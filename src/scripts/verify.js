@@ -198,7 +198,7 @@ async function testCreateMandate() {
         customerPhoneNumber: "08012345678",
         merchantReference: `BG_${TS}`,
         frequency: "VARIABLE",
-        narration: "BetGuard test",
+        narration: "BetSafe test",
         startDate: fmt(now),
         endDate: fmt(oneYear),
         startImmediately: true,

@@ -1,4 +1,4 @@
-// src/services/insights.js — Weekly insights engine
+// src/services/insights.js — Weekly insights engine (async)
 
 const db = require("../models/db");
 
@@ -17,15 +17,14 @@ function getWeekRange() {
   return { monday, sunday };
 }
 
-function computeInsights(userId) {
-  const user = db.getUser(userId);
-  const wallet = db.getWallet(userId);
+async function computeInsights(userId) {
+  const user = await db.getUser(userId);
+  const wallet = await db.getWallet(userId);
   if (!user || !wallet) return null;
 
   const { monday, sunday } = getWeekRange();
-  const allTx = db.getUserTransactions(userId);
+  const allTx = await db.getUserTransactions(userId);
 
-  // Filter this week's transactions
   const weekTx = allTx.filter((tx) => {
     const d = new Date(tx.createdAt);
     return d >= monday && d <= sunday;

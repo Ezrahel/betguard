@@ -99,7 +99,7 @@ async function createVirtualAccount({ userId, userFullName, subAccountId }) {
       `${BASE_URL}/v1/accounts/virtual`,
       {
         accountRef: `betguard_${userId}`,
-        accountName: `BetGuard Wallet — ${userFullName}`,
+        accountName: `BetSafe Wallet — ${userFullName}`,
       },
       { headers }
     );
@@ -152,7 +152,7 @@ async function createMandate({
         customerPhoneNumber,
         merchantReference,
         frequency: "VARIABLE",
-        narration: "BetGuard weekly wallet top-up",
+        narration: "BetSafe weekly wallet top-up",
         startDate: fmt(now),
         endDate: fmt(oneYearLater),
         startImmediately: true,

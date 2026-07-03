@@ -1,112 +1,289 @@
-# 🛡️ BetGuard — Responsible Gambling Wallet
+# 🛡️ BetSafe — Responsible Gambling Wallet
 
-> Built on Nomba APIs for the Nomba Hackathon 2026
-
-BetGuard gives users a ring-fenced weekly betting wallet that **auto-loads from their bank every Monday via Direct Debit and hard-blocks bets the moment they exceed their own limit** — using Nomba's Betting API to vend directly, no manual top-up possible.
+> Built on Nomba APIs for the Nomba Hackathon 2026  
+> *"Gamble what you plan to, not all that you have."*
 
 ---
 
-## Quick start
+## The Problem
 
-```bash
-# 1. Install dependencies
-npm install
+Betting platforms want you to deposit more. You want to set a limit and stick to it. These two incentives are in direct conflict. Traditional budgets (spreadsheets, mental notes, "I'll stop after this one") fail because **the betting platform always has your money**.
 
-# 2. Copy and fill in your credentials
-cp .env.example .env
-# Edit .env — credentials are already pre-filled from your hackathon email
+BetSafe flips the model: **the money never sits in your betting account**. It lives in a ring-fenced Nomba virtual wallet that releases only what your weekly budget allows — and physically cannot dispense more.
 
-# 3. Start the server
-npm run dev
+---
 
-# 4. Open the demo UI
-open http://localhost:3000
+## How It Works (The Full Flow)
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                        1. ONBOARD                                │
+│                                                                  │
+│  User fills in name, phone, bank account, weekly budget          │
+│       │                                                          │
+│       ▼                                                          │
+│  POST /api/onboard                                               │
+│       │                                                          │
+│       ├──→ Nomba: Create Virtual Account (ring-fenced wallet)    │
+│       │      Returns: unique NUBAN account number                │
+│       │                                                          │
+│       └──→ Nomba: Create Direct Debit Mandate (via NIBSS)        │
+│              User authorises their bank to let BetSafe pull     │
+│              funds weekly (cost: ₦50 one-time NIBSS token)       │
+│                                                                  │
+│  Result: User now has a wallet + an active mandate               │
+└──────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│                   2. MANDATE ACTIVATION                          │
+│                                                                  │
+│  Mandate is PENDING until user pays the ₦50 NIBSS token fee      │
+│  to the account number shown in the activation instructions.     │
+│                                                                  │
+│  Once paid, Nomba confirms → status becomes ACTIVE + ADVICE_SENT │
+│                                                                  │
+│  BetGuard polls every 15 minutes via mandatePoller.js:           │
+│  GET /v1/direct-debits/status → updates db → emits SSE event    │
+│  User sees green dot in the UI. Wallet is ready.                 │
+└──────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│             3. WEEKLY AUTO-TOPUP (Every Monday 00:05 WAT)        │
+│                                                                  │
+│  Cron job runs weeklyCycle.js:                                   │
+│       │                                                          │
+│       ├──→ For every user with an ACTIVE mandate:                │
+│       │     POST /v1/direct-debits/debit-mandate                 │
+│       │     → Pulls user.weeklyBudget from their bank            │
+│       │     → Credits it to their Nomba virtual wallet           │
+│       │     → Resets weeklySpent to 0                            │
+│       │                                                          │
+│  The wallet now has this week's budget. No manual top-up needed. │
+│  No way to add more until next Monday.                           │
+└──────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│             4. PLACE A BET (The Spending Gate)                   │
+│                                                                  │
+│  User wants to bet ₦X via Bet9ja.                                │
+│       │                                                          │
+│       ▼                                                          │
+│  POST /api/bet/place                                             │
+│       │                                                          │
+│       ▼                                                          │
+│  ┌─────────────────── spendingGate.js ──────────────────────┐    │
+│  │                                                          │    │
+│  │  GATE 1: Mandate Check                                   │    │
+│  │  ├── Is mandate ACTIVE + ADVICE_SENT?                    │    │
+│  │  └── NO → 403 "Mandate not active yet"                   │    │
+│  │                                                          │    │
+│  │  GATE 2: Budget Check                                    │    │
+│  │  ├── weeklySpent + ₦X ≤ weeklyBudget?                    │    │
+│  │  └── NO → 403 { blocked: true, reason: "BUDGET_EXHAUSTED"│    │
+│  │             } + records GATE_BLOCK transaction            │    │
+│  │                                                          │    │
+│  │  GATE 3: Cooldown Check                                  │    │
+│  │  ├── Is lastBetAt within cooldownMinutes?                │    │
+│  │  └── YES → 403 { blocked: true, reason: "COOLDOWN_ACTIVE"│    │
+│  │               minutesRemaining: X }                      │    │
+│  │                                                          │    │
+│  │  GATE 4: Warning (non-blocking)                          │    │
+│  │  ├── Is weeklySpent ≥ 80% of budget?                     │    │
+│  │  └── YES → attach warning to response (bet still allowed)│    │
+│  │                                                          │    │
+│  │  ALL GATES PASSED → req.spendContext set → next()        │    │
+│  └──────────────────────────────────────────────────────────┘    │
+│                              │                                   │
+│                              ▼                                   │
+│  Nomba Betting API: POST /v1/bill/betting/vend                  │
+│  → Funds leave virtual wallet → arrive in user's betting acct   │
+│  → weeklySpent += ₦X, totalBets += 1, lastBetAt = now           │
+│  → SSE event "bet:success" emitted to UI                        │
+│                                                                  │
+│  If Nomba call fails: transaction recorded as FAILED,            │
+│  spend is NOT incremented (money never left).                    │
+└──────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│             5. REAL-TIME UPDATES (Server-Sent Events)            │
+│                                                                  │
+│  GET /api/events/:userId — persistent SSE connection             │
+│                                                                  │
+│  Events emitted to the frontend:                                 │
+│  ┌─────────────┬──────────────────────────────────────┐          │
+│  │ wallet:topup │ ₦X loaded to wallet (from webhook)  │          │
+│  │ bet:success  │ Bet placed, ₦X sent to provider     │          │
+│  │ bet:blocked  │ Budget/cooldown blocked the bet     │          │
+│  │ mandate:ready│ Mandate just activated               │          │
+│  └─────────────┴──────────────────────────────────────┘          │
+│                                                                  │
+│  Heartbeat comment every 30s keeps connection alive.             │
+└──────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────┐
+│             6. INSIGHTS & RISK SCORING                           │
+│                                                                  │
+│  GET /api/wallet/:userId/insights                                │
+│       │                                                          │
+│       ├── dailySpend[7] — Mon to Sun bar chart data              │
+│       ├── peakBettingHour — hour with most bets this week        │
+│       ├── averageBetSize — mean amount per successful bet        │
+│       ├── blockedAttempts — count of GATE_BLOCKs this week       │
+│       ├── streakWeeks — consecutive weeks within budget          │
+│       └── riskScore — LOW (<50%), MEDIUM (50-80%), HIGH (>80%)   │
+│                                                                  │
+│  Shown as a spending bar chart in the History tab.               │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Architecture
+## Why This Actually Stops Overspending
 
-```
-User
- │
- ├─ POST /api/onboard
- │    ├─ Creates Nomba virtual account (ring-fenced wallet)
- │    └─ Creates Direct Debit mandate via NIBSS
- │
- ├─ CRON (every Monday 00:05 WAT)
- │    └─ Debits mandate → credits virtual account → resets spend tracker
- │
- ├─ POST /api/bet/place
- │    ├─ [spendingGate middleware]
- │    │    ├─ mandate ACTIVE + ADVICE_SENT?
- │    │    ├─ balance ≥ bet amount?
- │    │    └─ (spent + amount) ≤ weeklyBudget?
- │    └─ POST /v1/bill/betting/vend  ← Nomba Betting API
- │
- └─ POST /api/webhooks/nomba
-      └─ Confirms credits, records transaction
-```
+| Mechanism | How it works |
+|-----------|-------------|
+| **Ring-fenced wallet** | Money lives in a Nomba virtual account, not in the betting platform. The betting platform never has direct access to the user's bank account. |
+| **Hard weekly cap** | The spending gate physically blocks any transaction that would exceed `weeklyBudget`. Not a soft warning — a 403 rejection. Nomba is never called. No money moves. |
+| **No manual top-up** | The wallet can only be loaded by the Monday cron job via Direct Debit mandate. The user cannot add funds mid-week even if they want to. |
+| **Cooldown timer** | Forces a configurable pause (10/30/60/120 min) between bets — prevents impulsive consecutive losses. |
+| **Transparent history** | Every success, every block, every top-up is timestamped and visible. No hidden movements. |
+| **Risk score** | Automated flagging when spend exceeds 50%/80% or when blocks occur. Users see it before they act. |
 
 ---
 
-## API routes
+## API Routes
 
-| Method | Route | What it does |
-|--------|-------|-------------|
-| POST | `/api/onboard` | Register user, create virtual account + mandate |
-| GET | `/api/onboard/mandate-status/:userId` | Poll mandate activation |
-| GET | `/api/bet/providers` | List Nomba betting providers |
-| POST | `/api/bet/verify-account` | Verify a betting account ID |
-| POST | `/api/bet/place` | Gated bet placement |
-| GET | `/api/wallet/:userId` | Wallet state + live balance |
-| GET | `/api/wallet/:userId/history` | Transaction history |
-| PATCH | `/api/wallet/:userId/budget` | Update weekly budget |
-| POST | `/api/webhooks/nomba` | Nomba payment event receiver |
-| POST | `/api/admin/trigger-cycle` | Manual cycle trigger (demo) |
+| Method | Route | Description | Auth |
+|--------|-------|-------------|------|
+| POST | `/api/onboard` | Register user, create virtual account + mandate | — |
+| GET | `/api/onboard/mandate-status/:userId` | Poll + auto-update mandate status | — |
+| GET | `/api/bet/providers` | List supported betting platforms | Token |
+| POST | `/api/bet/verify-account` | Verify a betting account ID | Token |
+| POST | `/api/bet/place` | Gated bet placement (spendingGate runs) | Token |
+| GET | `/api/wallet/:userId` | Wallet state + cooldown info + live Nomba balance | — |
+| GET | `/api/wallet/:userId/history` | Transaction history (newest first) | — |
+| GET | `/api/wallet/:userId/insights` | Daily spend, peak hour, avg size, risk score | — |
+| PATCH | `/api/wallet/:userId/budget` | Update weekly budget | — |
+| PATCH | `/api/wallet/:userId/cooldown` | Set cooldown minutes (0/10/30/60/120) | — |
+| POST | `/api/webhooks/nomba` | Nomba payment event receiver | Webhook secret |
+| GET | `/api/events/:userId` | Server-Sent Events stream | — |
+| POST | `/api/admin/trigger-cycle` | Manual Monday cycle (demo) | — |
+| GET | `/api/health` | Health + version + user count | — |
 
 ---
 
-## Nomba APIs used
+## Nomba APIs Used
 
 | API | Endpoint | Purpose |
 |-----|----------|---------|
-| Virtual Accounts | `POST /v1/accounts/virtual` | Create ring-fenced wallet |
+| Auth | `POST /v1/auth/token/issue` | Get Bearer token (requires `accountId` header) |
+| Virtual Accounts | `POST /v1/accounts/virtual` | Create ring-fenced wallet per user |
+| Virtual Accounts | `GET /v1/accounts/virtual/:ref` | Fetch live balance |
 | Direct Debit | `POST /v1/direct-debits` | Create mandate |
 | Direct Debit | `GET /v1/direct-debits/status` | Poll activation |
 | Direct Debit | `POST /v1/direct-debits/debit-mandate` | Weekly auto-topup |
 | Betting | `GET /v1/bill/betting/providers` | List providers |
-| Betting | `GET /v1/bill/betting/customer-info` | Verify account |
-| Betting | `POST /v1/bill/betting/vend` | Fund betting account |
+| Betting | `GET /v1/bill/betting/customer-info` | Verify betting account |
+| Betting | `POST /v1/bill/betting/vend` | Fund betting account (with `payerName` + `phoneNumber`) |
 | Webhooks | (incoming) | Confirm payment events |
 
 ---
 
-## Demo script (judges)
+## File Structure
 
-1. **Onboard tab** → fill form → "Create account & mandate"
-   - Shows virtual wallet account number
-   - Shows NIBSS activation instructions
-2. **Demo tab** → paste `userId` → "Load user"
-3. **Demo tab** → "Run weekly cycle now" (simulates Monday auto-topup)
-4. **Demo tab** → "Place ₦1,000 bet" → succeeds, wallet updates live
-5. **Demo tab** → "Try ₦99,999 bet" → **hard blocked**, no money moved
-6. **History tab** → shows full transaction log including the block event
-
-Total demo time: ~90 seconds.
+```
+betguard/
+├── src/
+│   ├── server.js                # Express entry point
+│   ├── services/
+│   │   ├── nomba.js             # Nomba API client (safeGet, logging)
+│   │   └── insights.js          # Weekly insights engine
+│   ├── models/
+│   │   └── db.js                # File-persisted data store (data/db.json)
+│   ├── middleware/
+│   │   └── spendingGate.js      # Budget + cooldown enforcement
+│   ├── routes/
+│   │   ├── onboard.js           # User registration + mandate
+│   │   ├── bet.js               # Gated bet placement
+│   │   ├── wallet.js            # Balance, history, cooldown, insights
+│   │   ├── webhooks.js          # Nomba event receiver
+│   │   └── events.js            # SSE real-time stream
+│   ├── jobs/
+│   │   ├── weeklyCycle.js       # Monday auto-topup cron
+│   │   └── mandatePoller.js     # 15-min mandate status check
+│   └── scripts/
+│       └── verify.js            # Sandbox API verification
+├── public/
+│   └── index.html               # Glassmorphism SPA (Tailwind + Chart.js)
+├── data/
+│   └── db.json                  # Auto-created persistence file
+├── Procfile                     # Railway: web node src/server.js
+├── railway.json                 # Nixpacks config
+└── .env                         # Nomba credentials
+```
 
 ---
 
-## Webhook setup
+## Demo Script (90 seconds for judges)
 
-Register your webhook URL in the Nomba dashboard:
-```
-https://your-app-url.com/api/webhooks/nomba
-Sub-account ID: b76e2955-8376-46b0-8f34-7e70e3f31261
-```
+1. **Onboard tab** → fill form with name, phone, bank, budget → hit "Create account & mandate"
+   - Shows the virtual account NUBAN and NIBSS activation instructions
 
-For local development, use [ngrok](https://ngrok.com):
+2. **Demo tab** → paste the returned `userId` → "Load user"
+   - Wallet card populates, SSE connects in real-time
+
+3. **Demo tab** → "Run weekly cycle now"
+   - Simulates Monday morning: debits mandate → credits wallet → resets counter
+
+4. **Demo tab** → "Place ₦1,000 bet"
+   - Gate passes → vend succeeds → wallet updates live (SSE toast appears)
+
+5. **Demo tab** → "Try ₦99,999 bet"
+   - Gate blocks it → red pulse on budget bar → SSE blocked toast
+
+6. **History tab** → Spending chart + full transaction log with both the success and the block
+
+7. **Cooldown card** → Set 10m cooldown → try betting again → blocked with countdown timer
+
+---
+
+## Quick Start
+
 ```bash
-ngrok http 3000
-# Copy the https URL and register it on Nomba
+npm install
+cp .env.example .env   # Credentials are pre-filled
+npm run dev
+
+# Run sandbox verification first:
+node src/scripts/verify.js
+
+# Open browser at http://localhost:3000
 ```
+
+## Webhook Setup
+
+Register your webhook URL on the Nomba dashboard:
+
+```
+https://your-app.com/api/webhooks/nomba
+```
+
+For local testing with ngrok:
+
+```bash
+npx ngrok http 3000
+# Register the https://xxxx.ngrok.io/api/webhooks/nomba URL
+```
+
+---
+
+## Built By
+
+**Adelakin Israel — Solo Team** | **Team name: Ezrahel**
+
+*Nomba Hackathon 2026 — Responsible Gambling Wallet*

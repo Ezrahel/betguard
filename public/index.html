@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="BetGuard — Responsible gambling wallet powered by Nomba APIs.">
-<title>BetGuard — Responsible Gambling Wallet</title>
+<meta name="description" content="BetSafe — Responsible gambling wallet powered by Nomba APIs.">
+<title>BetSafe — Responsible Gambling Wallet</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet">
@@ -44,7 +44,6 @@ tailwind.config = {
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); border-radius: 10px; }
   ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.14); }
-
   .glass { background: rgba(255,255,255,0.65); backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4); border: 1px solid rgba(255,255,255,0.7); }
   .glass-strong { background: rgba(255,255,255,0.88); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2); border: 1px solid rgba(255,255,255,0.6); }
   .glass-card { background: rgba(255,255,255,0.75); backdrop-filter: blur(24px) saturate(1.5); -webkit-backdrop-filter: blur(24px) saturate(1.5); border: 1px solid rgba(255,255,255,0.7); }
@@ -98,6 +97,37 @@ tailwind.config = {
 <!-- Toast container -->
 <div id="toast-container" class="fixed bottom-6 right-6 z-[999] flex flex-col-reverse gap-3 pointer-events-none" style="max-width: 380px;"></div>
 
+<!-- Auth Overlay -->
+<div id="auth-overlay" class="fixed inset-0 z-[1000] bg-[#f6f8fc] flex items-center justify-center p-4" style="display:flex;">
+  <div class="glass-card rounded-3xl p-8 lg:p-10 shadow-glass-lg max-w-md w-full">
+    <div class="text-center mb-8">
+      <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-indigo-200/50 mx-auto mb-4">B</div>
+      <h1 class="font-display text-3xl font-extrabold tracking-tight">Bet<span class="gradient-text">Guard</span></h1>
+      <p class="text-sm text-slate-400 mt-2">Responsible gambling wallet</p>
+    </div>
+
+    <!-- Login form -->
+    <div id="auth-login">
+      <div class="flex flex-col gap-1.5 mb-4">
+        <label class="text-xs font-semibold text-slate-500 tracking-wide">Email</label>
+        <input id="auth-email" type="email" placeholder="ademola@example.com" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+      </div>
+      <div class="flex flex-col gap-1.5 mb-6">
+        <label class="text-xs font-semibold text-slate-500 tracking-wide">Password</label>
+        <input id="auth-password" type="password" placeholder="Min 6 characters" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
+      </div>
+      <button id="auth-btn" class="w-full py-3 px-6 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-sm rounded-xl shadow-md hover:shadow-lg hover:shadow-indigo-200/50 transition-all duration-200 active:scale-[0.98]" onclick="handleAuth()">
+        <span>Sign In</span>
+      </button>
+      <p class="text-xs text-slate-400 text-center mt-4">
+        <span id="auth-toggle-text">Don't have an account?</span>
+        <button class="text-indigo-500 hover:text-indigo-600 font-semibold ml-1" onclick="toggleAuthMode()">Create one</button>
+      </p>
+      <div class="alert mt-4" id="auth-alert" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
 <header class="glass-strong sticky top-0 z-50 px-6 lg:px-10 h-16 flex items-center gap-4 shadow-[0_1px_0_rgba(0,0,0,0.03)]">
   <div class="flex items-center gap-3">
     <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white text-sm font-bold shadow-lg shadow-indigo-200/50">B</div>
@@ -105,21 +135,22 @@ tailwind.config = {
   </div>
   <span class="text-[11px] font-semibold bg-emerald-50 text-emerald-600 border border-emerald-200/50 px-3 py-1 rounded-full tracking-wide">DEMO</span>
   <div class="ml-auto flex items-center gap-3">
-    <span id="user-label" class="text-sm text-slate-400 font-medium">No user loaded</span>
+    <span id="user-label" class="text-sm text-slate-400 font-medium">Not signed in</span>
     <div id="user-avatar" class="w-8 h-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center text-slate-500 text-xs font-semibold shrink-0">?</div>
+    <button id="logout-btn" class="hidden text-xs font-semibold text-red-400 hover:text-red-500 bg-white/50 hover:bg-white px-3 py-1.5 rounded-lg border border-red-100/50 transition-all" onclick="handleLogout()">Sign out</button>
   </div>
 </header>
 
 <div class="layout-grid grid grid-cols-1 lg:grid-cols-[380px_1fr] h-[calc(100vh-64px)] max-w-[1440px] mx-auto">
-  
+
   <aside class="sidebar overflow-y-auto p-4 lg:p-6 lg:pr-3 lg:border-r border-gray-100/70 flex flex-col gap-4 bg-white/30 lg:bg-transparent max-h-[50vh] lg:max-h-none">
-    
+
     <!-- Wallet Hero Glass Card -->
     <div class="glass-hero relative rounded-2xl p-6 shadow-glass-lg overflow-hidden">
       <div class="relative z-10">
         <div class="flex items-center justify-between mb-1">
           <span class="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Weekly wallet</span>
-          <span class="text-[10px] font-medium text-slate-300 bg-white/30 px-2.5 py-0.5 rounded-full">BetGuard</span>
+          <span class="text-[10px] font-medium text-slate-300 bg-white/30 px-2.5 py-0.5 rounded-full">BetSafe</span>
         </div>
         <div class="font-display text-4xl font-extrabold tracking-tight text-slate-900 mt-2" id="wallet-balance">₦—</div>
         <div class="text-sm text-slate-400 mt-1 font-medium" id="wallet-reset">Loading...</div>
@@ -153,7 +184,6 @@ tailwind.config = {
       <div id="cooldown-body">
         <div id="cooldown-state" class="text-sm text-slate-500 font-medium">Load a user</div>
       </div>
-      <!-- Inline cooldown settings form (hidden by default) -->
       <div id="cooldown-form" class="hidden mt-3 pt-3 border-t border-white/40">
         <label class="text-xs font-semibold text-slate-500 tracking-wide block mb-2">Minutes between bets</label>
         <div class="flex gap-2 flex-wrap">
@@ -193,7 +223,7 @@ tailwind.config = {
   </aside>
 
   <main class="overflow-y-auto bg-white/20 lg:pl-3 lg:pr-6 p-4 lg:p-6">
-    
+
     <div class="glass rounded-xl px-1 shadow-glass flex gap-1 overflow-x-auto mb-5" style="padding: 3px;">
       <button class="tab-btn active flex-1 text-center py-2.5 px-4 text-sm rounded-lg transition-all" data-tab="onboard">Onboard</button>
       <button class="tab-btn flex-1 text-center py-2.5 px-4 text-sm rounded-lg transition-all" data-tab="bet">Place Bet</button>
@@ -204,7 +234,7 @@ tailwind.config = {
     <!-- Onboard -->
     <div class="tab-panel active" id="tab-onboard">
       <div class="glass-card rounded-2xl p-6 lg:p-8 shadow-glass max-w-2xl">
-        <h2 class="font-display text-2xl font-bold tracking-tight text-slate-900">Create a BetGuard account</h2>
+        <h2 class="font-display text-2xl font-bold tracking-tight text-slate-900">Create a BetSafe account</h2>
         <p class="text-sm text-slate-400 mt-2 leading-relaxed max-w-lg">This creates a ring-fenced virtual wallet + a Direct Debit mandate authorised via NIBSS. The mandate auto-loads the weekly budget each Monday.</p>
         <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="flex flex-col gap-1.5">
@@ -214,10 +244,6 @@ tailwind.config = {
           <div class="flex flex-col gap-1.5">
             <label class="text-xs font-semibold text-slate-500 tracking-wide">Phone</label>
             <input id="ob-phone" placeholder="08012345678" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
-          </div>
-          <div class="flex flex-col gap-1.5 md:col-span-2">
-            <label class="text-xs font-semibold text-slate-500 tracking-wide">Email</label>
-            <input id="ob-email" placeholder="ademola@example.com" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
           </div>
           <div class="flex flex-col gap-1.5 md:col-span-2">
             <label class="text-xs font-semibold text-slate-500 tracking-wide">Weekly budget (₦)</label>
@@ -254,7 +280,7 @@ tailwind.config = {
     <div class="tab-panel" id="tab-bet">
       <div class="glass-card rounded-2xl p-6 lg:p-8 shadow-glass max-w-2xl">
         <h2 class="font-display text-2xl font-bold tracking-tight text-slate-900">Place a bet</h2>
-        <p class="text-sm text-slate-400 mt-2 leading-relaxed max-w-lg">Funds leave your BetGuard wallet and go directly to your betting account. The gate blocks any bet that exceeds your weekly budget — no override possible.</p>
+        <p class="text-sm text-slate-400 mt-2 leading-relaxed max-w-lg">Funds leave your BetSafe wallet and go directly to your betting account. The gate blocks any bet that exceeds your weekly budget — no override possible.</p>
         <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div class="flex flex-col gap-1.5 md:col-span-2">
             <label class="text-xs font-semibold text-slate-500 tracking-wide">Betting provider</label>
@@ -274,7 +300,7 @@ tailwind.config = {
           </div>
         </div>
         <button class="btn-primary mt-6 w-full" onclick="handlePlaceBet()">
-          <span class="inline-flex items-center justify-center gap-2 w-full py-3 px-6 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-sm rounded-xl shadow-md hover:shadow-lg hover:shadow-indigo-200/50 transition-all duration-200 active:scale-[0.98]">Place bet via BetGuard</span>
+          <span class="inline-flex items-center justify-center gap-2 w-full py-3 px-6 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-semibold text-sm rounded-xl shadow-md hover:shadow-lg hover:shadow-indigo-200/50 transition-all duration-200 active:scale-[0.98]">Place bet via BetSafe</span>
         </button>
         <div class="alert mt-5" id="bet-alert"></div>
       </div>
@@ -284,7 +310,6 @@ tailwind.config = {
     <div class="tab-panel" id="tab-history">
       <div class="glass-card rounded-2xl p-6 lg:p-8 shadow-glass">
         <h2 class="font-display text-2xl font-bold tracking-tight text-slate-900">Transaction history</h2>
-        <!-- Chart canvas -->
         <div class="mt-5 mb-6" style="position:relative;height:200px;width:100%">
           <canvas id="spending-chart"></canvas>
         </div>
@@ -299,16 +324,13 @@ tailwind.config = {
       <div class="glass-card rounded-2xl p-6 lg:p-8 shadow-glass max-w-2xl">
         <h2 class="font-display text-2xl font-bold tracking-tight text-slate-900">Judges demo flow</h2>
         <div class="mt-4 p-4 bg-indigo-50/60 border border-indigo-100/50 rounded-xl text-sm text-indigo-600 font-medium flex items-center gap-2.5">
-          <span class="text-lg">⚡</span>
-          Use this tab to walk judges through the complete BetGuard story in under 2 minutes.
+          <span class="text-lg">&#9889;</span>
+          Use this tab to walk judges through the complete BetSafe story in under 2 minutes.
         </div>
         <div class="mt-6 space-y-6">
           <div>
-            <label class="text-xs font-semibold text-slate-500 tracking-wide mb-2 block">Step 1 — load an existing user</label>
-            <input id="demo-userid" placeholder="Paste userId from onboarding response" class="w-full px-4 py-2.5 bg-white border border-slate-200/80 rounded-xl text-sm text-slate-900 placeholder:text-slate-300 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100/50 transition-all">
-            <button class="mt-3 w-full" onclick="loadUser()">
-              <span class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-5 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm rounded-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98]">Load user & refresh wallet</span>
-            </button>
+            <label class="text-xs font-semibold text-slate-500 tracking-wide mb-2 block">Step 1 — onboard a new user</label>
+            <p class="text-sm text-slate-400 mb-3">Go to the <strong>Onboard</strong> tab, fill in the form, and create an account + mandate.</p>
           </div>
           <div class="border-t border-gray-100/80 pt-6">
             <p class="font-semibold text-sm text-slate-700 mb-1">Step 2 — simulate weekly auto-topup</p>
@@ -322,10 +344,10 @@ tailwind.config = {
             <p class="text-sm text-slate-400 mb-3">Place a bet within budget (passes), then one that exceeds it (blocked). Judges see the wall go up.</p>
             <div class="grid grid-cols-2 gap-3">
               <button onclick="demoGoodBet()">
-                <span class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-5 bg-white hover:bg-emerald-50 text-emerald-700 font-semibold text-sm rounded-xl border border-emerald-200/60 shadow-sm hover:shadow-md hover:border-emerald-300/60 transition-all duration-200 active:scale-[0.98]">Place ₦1,000 bet</span>
+                <span class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-5 bg-white hover:bg-emerald-50 text-emerald-700 font-semibold text-sm rounded-xl border border-emerald-200/60 shadow-sm hover:shadow-md hover:border-emerald-300/60 transition-all duration-200 active:scale-[0.98]">Place &#8358;1,000 bet</span>
               </button>
               <button onclick="demoBadBet()">
-                <span class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-5 bg-white hover:bg-red-50 text-red-600 font-semibold text-sm rounded-xl border border-red-200/60 shadow-sm hover:shadow-md hover:border-red-300/60 transition-all duration-200 active:scale-[0.98]">Try ₦99,999 bet</span>
+                <span class="inline-flex items-center justify-center gap-2 w-full py-2.5 px-5 bg-white hover:bg-red-50 text-red-600 font-semibold text-sm rounded-xl border border-red-200/60 shadow-sm hover:shadow-md hover:border-red-300/60 transition-all duration-200 active:scale-[0.98]">Try &#8358;99,999 bet</span>
               </button>
             </div>
           </div>
@@ -338,11 +360,152 @@ tailwind.config = {
 </div>
 
 <script>
+// ── Auth state ──
 let currentUserId = null;
+let currentToken = localStorage.getItem('bg_token');
+let isSignupMode = false;
 let spendingChart = null;
 let sseConnection = null;
 let cooldownTimer = null;
 let isCooldownFormOpen = false;
+
+function getAuthHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (currentToken) h['Authorization'] = 'Bearer ' + currentToken;
+  return h;
+}
+
+function authFetch(url, opts = {}) {
+  opts.headers = { ...getAuthHeaders(), ...opts.headers };
+  return fetch(url, opts);
+}
+
+// ── Auth UI ──
+function toggleAuthMode() {
+  isSignupMode = !isSignupMode;
+  const btn = document.querySelector('#auth-btn span');
+  const toggleBtn = document.querySelector('#auth-toggle-text + button');
+  document.getElementById('auth-alert').style.display = 'none';
+
+  if (isSignupMode) {
+    btn.textContent = 'Sign Up';
+    toggleBtn.textContent = 'Sign in';
+    document.getElementById('auth-toggle-text').textContent = 'Already have an account?';
+  } else {
+    btn.textContent = 'Sign In';
+    toggleBtn.textContent = 'Create one';
+    document.getElementById('auth-toggle-text').textContent = "Don't have an account?";
+  }
+}
+
+async function handleAuth() {
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const btn = document.querySelector('#auth-btn');
+  const span = btn.querySelector('span');
+
+  if (!email || !password) {
+    showAuthAlert('error', 'Email and password are required.');
+    return;
+  }
+
+  span.innerHTML = `<span class="spinner"></span>Processing...`;
+  btn.disabled = true;
+
+  try {
+    const endpoint = isSignupMode ? '/api/auth/signup' : '/api/auth/signin';
+    const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+    const data = await res.json();
+
+    if (!res.ok) throw new Error(data.error || 'Authentication failed');
+
+    currentToken = data.session.access_token;
+    localStorage.setItem('bg_token', currentToken);
+
+    if (isSignupMode) {
+      showAuthAlert('success', 'Account created! You are now signed in.');
+      isSignupMode = false;
+    }
+
+    completeLogin(data.user);
+  } catch (e) {
+    showAuthAlert('error', e.message);
+  } finally {
+    span.textContent = isSignupMode ? 'Sign Up' : 'Sign In';
+    btn.disabled = false;
+  }
+}
+
+function completeLogin(user) {
+  currentUserId = user.id;
+  document.getElementById('user-label').textContent = user.email;
+  document.getElementById('user-avatar').className = 'w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-xs font-semibold shrink-0';
+  document.getElementById('user-avatar').textContent = user.email[0].toUpperCase();
+  document.getElementById('logout-btn').classList.remove('hidden');
+  document.getElementById('auth-overlay').style.display = 'none';
+  document.getElementById('user-id-display').textContent = `User ID: ${user.id}`;
+
+  connectSSE(currentUserId, currentToken);
+
+  // Check if user has already onboarded
+  authFetch('/api/auth/me')
+    .then(r => r.json())
+    .then(data => {
+      if (data.hasWallet && data.hasMandate) {
+        showToast('info', 'Welcome back', 'Wallet and mandate found');
+        refreshWallet();
+      } else {
+        showToast('info', 'Complete onboarding', 'Fill in your details to get started');
+        switchTab('onboard');
+      }
+    })
+    .catch(() => {});
+}
+
+function handleLogout() {
+  localStorage.removeItem('bg_token');
+  currentToken = null;
+  currentUserId = null;
+  if (sseConnection) { sseConnection.close(); sseConnection = null; }
+  document.getElementById('auth-overlay').style.display = 'flex';
+  document.getElementById('user-label').textContent = 'Not signed in';
+  document.getElementById('user-avatar').className = 'w-8 h-8 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center text-slate-500 text-xs font-semibold shrink-0';
+  document.getElementById('user-avatar').textContent = '?';
+  document.getElementById('logout-btn').classList.add('hidden');
+  document.getElementById('user-id-display').textContent = '';
+  document.getElementById('auth-email').value = '';
+  document.getElementById('auth-password').value = '';
+  document.getElementById('auth-alert').style.display = 'none';
+  showToast('info', 'Signed out');
+}
+
+function showAuthAlert(type, msg) {
+  const el = document.getElementById('auth-alert');
+  const colors = { success: 'bg-emerald-50 border-emerald-200/60 text-emerald-700', error: 'bg-red-50 border-red-200/60 text-red-600' };
+  const icons = { success: '✅', error: '❌' };
+  el.className = `alert flex items-start gap-3 p-4 rounded-xl border text-sm leading-relaxed mt-4 ${colors[type] || colors.success}`;
+  el.style.display = 'flex';
+  el.innerHTML = `<span class="text-base shrink-0 mt-0.5">${icons[type] || ''}</span><div>${msg}</div>`;
+}
+
+// Auto-login on page load if token exists
+if (currentToken) {
+  authFetch('/api/auth/me')
+    .then(r => r.json())
+    .then(data => {
+      if (data.user) {
+        currentUserId = data.user.id;
+        completeLogin(data.user);
+      } else {
+        localStorage.removeItem('bg_token');
+        currentToken = null;
+      }
+    })
+    .catch(() => {
+      localStorage.removeItem('bg_token');
+      currentToken = null;
+    });
+}
 
 // ── Tab switching ──
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -392,16 +555,8 @@ function showToast(type, title, message) {
   `;
 
   container.appendChild(toast);
-
-  // Slide in
   requestAnimationFrame(() => { toast.style.transform = 'translateX(0)'; });
-
-  // Enforce max 3 toasts visible
-  while (container.children.length > 3) {
-    container.removeChild(container.firstChild);
-  }
-
-  // Auto-dismiss after 4s
+  while (container.children.length > 3) { container.removeChild(container.firstChild); }
   setTimeout(() => {
     toast.style.transform = 'translateX(120%)';
     toast.style.opacity = '0';
@@ -410,58 +565,41 @@ function showToast(type, title, message) {
 }
 
 // ── SSE connection ──
-function connectSSE(userId) {
-  if (sseConnection) {
-    sseConnection.close();
-    sseConnection = null;
-  }
+function connectSSE(userId, token) {
+  if (sseConnection) { sseConnection.close(); sseConnection = null; }
+  if (!userId || !token) return;
 
-  if (!userId) return;
-
-  const es = new EventSource(`/api/events/${userId}`);
+  const es = new EventSource(`/api/events/${userId}?token=${encodeURIComponent(token)}`);
   sseConnection = es;
 
-  es.addEventListener('connected', () => {
-    console.log('[SSE] Connected');
-  });
-
+  es.addEventListener('connected', () => { console.log('[SSE] Connected'); });
   es.addEventListener('wallet:topup', (e) => {
     const data = JSON.parse(e.data);
     showToast('success', `₦${(data.amount || 0).toLocaleString()} loaded to wallet`);
     refreshWallet();
   });
-
   es.addEventListener('bet:success', (e) => {
     const data = JSON.parse(e.data);
-    showToast('success', `Bet placed`, `₦${(data.amount || 0).toLocaleString()} — ${data.remaining?.toLocaleString() ? '₦' + data.remaining.toLocaleString() + ' remaining' : ''}`);
+    showToast('success', 'Bet placed', `₦${(data.amount || 0).toLocaleString()} — ${data.remaining?.toLocaleString() ? '₦' + data.remaining.toLocaleString() + ' remaining' : ''}`);
     refreshWallet();
   });
-
   es.addEventListener('bet:blocked', (e) => {
     const data = JSON.parse(e.data);
     const reason = data.reason === 'COOLDOWN_ACTIVE' ? 'Cooldown active' : 'Budget exhausted';
     showToast('blocked', `Bet blocked — ${reason}`, data.minutesRemaining ? `${data.minutesRemaining} min remaining` : '');
-    // Pulse budget bar red
     const fill = document.getElementById('budget-fill');
     if (fill) {
       fill.style.transition = 'none';
       fill.style.background = '#ef4444';
-      setTimeout(() => {
-        fill.style.transition = '';
-        refreshWallet();
-      }, 1500);
+      setTimeout(() => { fill.style.transition = ''; refreshWallet(); }, 1500);
     }
     refreshWallet();
   });
-
   es.addEventListener('mandate:ready', () => {
-    showToast('success', 'Mandate activated!', 'Your BetGuard wallet is ready.');
+    showToast('success', 'Mandate activated!', 'Your BetSafe wallet is ready.');
     refreshWallet();
   });
-
-  es.onerror = () => {
-    console.warn('[SSE] Connection error, will retry...');
-  };
+  es.onerror = () => { console.warn('[SSE] Connection error, will retry...'); };
 }
 
 // ── Alert system ──
@@ -498,7 +636,6 @@ async function handleOnboard() {
   const body = {
     fullName: document.getElementById('ob-name').value,
     phone: document.getElementById('ob-phone').value,
-    email: document.getElementById('ob-email').value,
     weeklyBudget: parseFloat(document.getElementById('ob-budget').value),
     bankAccountNumber: document.getElementById('ob-acct').value,
     bankCode: document.getElementById('ob-bank').value,
@@ -506,16 +643,12 @@ async function handleOnboard() {
   };
 
   try {
-    const res = await fetch('/api/onboard', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const res = await authFetch('/api/onboard', { method: 'POST', body: JSON.stringify(body) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Onboarding failed');
 
-    currentUserId = data.userId;
     document.getElementById('user-label').textContent = body.fullName;
-    document.getElementById('user-id-display').textContent = `User ID: ${data.userId}`;
     updateAvatar(body.fullName);
-    connectSSE(currentUserId);
-
     showAlert('ob-alert', 'success',
       `<strong>Account created!</strong><br><br>
        <strong>Virtual wallet:</strong> ${data.wallet.accountNumber}<br>
@@ -532,13 +665,12 @@ async function handleOnboard() {
 
 // ── Place bet ──
 async function handlePlaceBet(opts = {}) {
-  if (!currentUserId) return showAlert('bet-alert', 'error', '<strong>Load a user first</strong> (Demo tab).');
+  if (!currentUserId) return showAlert('bet-alert', 'error', '<strong>Not signed in.</strong>');
 
   const btn = opts.btn || event.currentTarget;
   setLoading(btn, true);
 
   const body = {
-    userId: currentUserId,
     billerId: opts.billerId || document.getElementById('bet-provider').value,
     customerId: opts.customerId || document.getElementById('bet-customer').value || 'demo123',
     amount: opts.amount || parseFloat(document.getElementById('bet-amount').value),
@@ -547,14 +679,13 @@ async function handlePlaceBet(opts = {}) {
   const alertId = opts.alertId || 'bet-alert';
 
   try {
-    const res = await fetch('/api/bet/place', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const res = await authFetch('/api/bet/place', { method: 'POST', body: JSON.stringify(body) });
     const data = await res.json();
 
     if (res.status === 403 && data.blocked) {
       showAlert(alertId, 'blocked',
-        `<strong>Bet blocked by BetGuard</strong><br>${data.message}<br>Wallet resets in <strong>${data.resetsIn}</strong>.`
+        `<strong>Bet blocked by BetSafe</strong><br>${data.message}<br>Wallet resets in <strong>${data.resetsIn}</strong>.`
       );
-      // SSE will also fire with bet:blocked
     } else if (!res.ok) {
       throw new Error(data.error);
     } else {
@@ -575,7 +706,8 @@ async function handlePlaceBet(opts = {}) {
 async function refreshWallet() {
   if (!currentUserId) return;
   try {
-    const res = await fetch(`/api/wallet/${currentUserId}`);
+    const res = await authFetch(`/api/wallet/me`);
+    if (res.status === 404) return;
     const { wallet, mandate, user: userInfo } = await res.json();
 
     const pct = wallet.percentUsed;
@@ -596,11 +728,8 @@ async function refreshWallet() {
     document.getElementById('mandate-text').textContent = isReady ? 'Active — wallet ready' : `${mandate.status} / ${mandate.adviceStatus}`;
 
     if (userInfo) updateAvatar(userInfo.fullName);
-
-    // Update cooldown card
     updateCooldownDisplay(wallet.cooldown, userInfo?.cooldownMinutes);
 
-    // Update user ID
     const uidEl = document.getElementById('user-id-display');
     if (uidEl && !uidEl.textContent.includes(currentUserId)) {
       uidEl.textContent = `User ID: ${currentUserId}`;
@@ -610,7 +739,7 @@ async function refreshWallet() {
 
 function updateAvatar(name) {
   const avatar = document.getElementById('user-avatar');
-  if (name && name !== 'No user loaded') {
+  if (name) {
     const initials = name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     avatar.textContent = initials;
     avatar.className = 'w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-xs font-semibold shrink-0';
@@ -704,9 +833,8 @@ document.addEventListener('click', function(e) {
   if (!option || !currentUserId) return;
   const minutes = parseInt(option.dataset.minutes);
 
-  fetch(`/api/wallet/${currentUserId}/cooldown`, {
+  authFetch(`/api/wallet/me/cooldown`, {
     method: 'PATCH',
-    headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ cooldownMinutes: minutes })
   })
   .then(r => r.json())
@@ -724,7 +852,7 @@ document.addEventListener('click', function(e) {
 async function loadHistory() {
   if (!currentUserId) return;
   try {
-    const res = await fetch(`/api/wallet/${currentUserId}/history`);
+    const res = await authFetch(`/api/wallet/me/history`);
     const { transactions } = await res.json();
     const list = document.getElementById('tx-list');
 
@@ -753,7 +881,7 @@ async function loadHistory() {
 async function renderChart() {
   if (!currentUserId) return;
   try {
-    const res = await fetch(`/api/wallet/${currentUserId}/insights`);
+    const res = await authFetch(`/api/wallet/me/insights`);
     if (!res.ok) return;
     const data = await res.json();
     const dailySpend = data.dailySpend || [];
@@ -774,8 +902,7 @@ async function renderChart() {
           data: amounts,
           backgroundColor: amounts.map(a => {
             if (a === 0) return 'rgba(148,163,184,0.15)';
-            // Color based on % of daily share (weeklyBudget / 7)
-            const dailyShare = 5000 / 7; // fallback if no budget known
+            const dailyShare = 5000 / 7;
             const pct = dailyShare > 0 ? (a / dailyShare) * 100 : 0;
             if (pct > 80) return 'rgba(239,68,68,0.6)';
             if (pct > 50) return 'rgba(245,158,11,0.6)';
@@ -829,24 +956,12 @@ async function renderChart() {
 }
 
 // ── Demo helpers ──
-async function loadUser() {
-  const id = document.getElementById('demo-userid').value.trim();
-  if (!id) return;
-  currentUserId = id;
-  document.getElementById('user-id-display').textContent = `User ID: ${id}`;
-  connectSSE(currentUserId);
-  await refreshWallet();
-  showAlert('demo-alert', 'success', '<strong>User loaded.</strong> Wallet refreshed.');
-  showToast('info', 'User loaded', 'SSE connected');
-}
-
 async function triggerCycle() {
   const btn = event.currentTarget;
   setLoading(btn, true);
   try {
-    const res = await fetch('/api/admin/trigger-cycle', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ userId: currentUserId })
+    const res = await authFetch('/api/admin/trigger-cycle', {
+      method: 'POST', body: JSON.stringify({})
     });
     const data = await res.json();
     showAlert('demo-alert', 'success', `Cycle run: ${JSON.stringify(data.results)}`);
