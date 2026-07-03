@@ -97,3 +97,25 @@ CREATE POLICY "mandates_read_own" ON public.mandates
 
 CREATE POLICY "transactions_read_own" ON public.transactions
   FOR SELECT USING (auth.uid() = user_id);
+
+-- Users can insert/update their own data (for client-side operations)
+CREATE POLICY "users_insert_own" ON public.users
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "users_update_own" ON public.users
+  FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "wallets_insert_own" ON public.wallets
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "wallets_update_own" ON public.wallets
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "mandates_insert_own" ON public.mandates
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "mandates_update_own" ON public.mandates
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "transactions_insert_own" ON public.transactions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);

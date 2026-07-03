@@ -22,7 +22,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(express.json());
+app.use(express.json({ limit: "100kb" }));
 
 // CORS for the frontend
 app.use((req, res, next) => {
@@ -41,7 +41,13 @@ app.use(express.static(path.join(__dirname, "../public")));
 app.post("/api/auth/signup", async (req, res) => {
   const { email, password, fullName } = req.body;
   if (!email || !password) {
-    return res.status(400).json({ error: "Email and password are required." });
+    return res.status(400).json({ success: false, error: "Email and password are required." });
+  }
+  if (typeof email !== "string" || typeof password !== "string") {
+    return res.status(400).json({ success: false, error: "Email and password must be strings." });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ success: false, error: "Password must be at least 6 characters." });
   }
 
   try {
@@ -54,15 +60,24 @@ app.post("/api/auth/signup", async (req, res) => {
 
     if (error) throw error;
 
-    res.status(201).json({
+    const user = data?.user;
+    const session = data?.session ?? null;
+
+    if (!user) {
+      throw new Error("Signup succeeded but no user was returned.");
+    }
+
+    res.status(session ? 200 : 201).json({
       success: true,
-      user: { id: data.user.id, email: data.user.email },
-      session: data.session,
-      message: "Check your email for the confirmation link, or sign in immediately if auto-confirm is enabled.",
+      user: { id: user.id, email: user.email },
+      session,
+      message: session
+        ? "Account created and signed in."
+        : "Account created. Check your email for the confirmation link, then sign in.",
     });
   } catch (err) {
-    console.error("Signup error:", err.message);
-    res.status(400).json({ error: err.message });
+    console.error("[auth] Signup error:", err);
+    res.status(400).json({ success: false, error: err.message });
   }
 });
 
@@ -70,7 +85,10 @@ app.post("/api/auth/signup", async (req, res) => {
 app.post("/api/auth/signin", async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
-    return res.status(400).json({ error: "Email and password are required." });
+    return res.status(400).json({ success: false, error: "Email and password are required." });
+  }
+  if (typeof email !== "string" || typeof password !== "string") {
+    return res.status(400).json({ success: false, error: "Email and password must be strings." });
   }
 
   try {
@@ -78,28 +96,43 @@ app.post("/api/auth/signin", async (req, res) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
 
+    const user = data?.user;
+    const session = data?.session ?? null;
+
+    if (!user || !session) {
+      throw new Error("Login succeeded but no session was returned.");
+    }
+
     res.json({
       success: true,
-      user: { id: data.user.id, email: data.user.email },
-      session: data.session,
+      user: { id: user.id, email: user.email },
+      session: { access_token: session.access_token, refresh_token: session.refresh_token },
     });
   } catch (err) {
-    console.error("Signin error:", err.message);
-    res.status(401).json({ error: err.message });
+    console.error("[auth] Signin error:", err);
+    res.status(401).json({ success: false, error: err.message });
   }
 });
 
 // GET /api/auth/me — verify token and return user info
 app.get("/api/auth/me", authMiddleware, async (req, res) => {
-  const user = await db.getUser(req.userId);
-  const wallet = await db.getWallet(req.userId);
-  const mandate = await db.getMandate(req.userId);
+  try {
+    const [user, wallet, mandate] = await Promise.all([
+      db.getUser(req.userId).catch(() => null),
+      db.getWallet(req.userId).catch(() => null),
+      db.getMandate(req.userId).catch(() => null),
+    ]);
 
-  res.json({
-    user: user || { id: req.userId, email: req.userEmail },
-    hasWallet: !!wallet,
-    hasMandate: !!mandate,
-  });
+    res.json({
+      success: true,
+      user: user || { id: req.userId, email: req.userEmail },
+      hasWallet: !!wallet,
+      hasMandate: !!mandate,
+    });
+  } catch (err) {
+    console.error("[auth] /me error:", err);
+    res.status(500).json({ success: false, error: "Failed to fetch user data." });
+  }
 });
 
 // ─── Protected API Routes ────────────────────────────────────────────────────
@@ -115,20 +148,33 @@ app.use("/api/webhooks", webhookRouter);
 app.post("/api/admin/trigger-cycle", authMiddleware, async (req, res) => {
   try {
     const results = await runCycleNow(req.userId);
-    res.json({ results });
+    res.json({ success: true, data: results });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("[admin] trigger-cycle error:", err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // GET /api/health — public
 app.get("/api/health", async (req, res) => {
+  let supabaseStatus = "unknown";
+  let userCount = 0;
+  try {
+    userCount = await db.getUserCount();
+    supabaseStatus = "connected";
+  } catch (err) {
+    supabaseStatus = `error: ${err.message}`;
+  }
+
   res.json({
-    status: "ok",
-    version: "1.0.0",
-    uptime: Math.floor(process.uptime()),
-    userCount: await db.getUserCount(),
-    env: process.env.NOMBA_BASE_URL,
+    success: true,
+    data: {
+      status: "ok",
+      version: "1.0.0",
+      uptime: Math.floor(process.uptime()),
+      supabase: supabaseStatus,
+      userCount,
+    },
   });
 });
 

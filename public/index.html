@@ -408,19 +408,56 @@ async function handleAuth() {
     showAuthAlert('error', 'Email and password are required.');
     return;
   }
+  if (password.length < 6) {
+    showAuthAlert('error', 'Password must be at least 6 characters.');
+    return;
+  }
 
   span.innerHTML = `<span class="spinner"></span>Processing...`;
   btn.disabled = true;
 
   try {
     const endpoint = isSignupMode ? '/api/auth/signup' : '/api/auth/signin';
-    const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+    const body = { email, password };
+    // Only send fullName on signup — frontend has no separate name field; just use email prefix
+    if (isSignupMode) body.fullName = email.split('@')[0];
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
     const data = await res.json();
 
-    if (!res.ok) throw new Error(data.error || 'Authentication failed');
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || 'Authentication failed');
+    }
 
-    currentToken = data.session.access_token;
+    // ── Handle signup with email confirmation (no session returned) ──
+    if (isSignupMode && !data.session) {
+      showAuthAlert('success',
+        '<strong>Account created!</strong> Check your email for the confirmation link, then sign in.'
+      );
+      isSignupMode = false;
+      document.getElementById('auth-email').value = '';
+      document.getElementById('auth-password').value = '';
+      // Switch to sign-in mode
+      toggleAuthMode();
+      return;
+    }
+
+    // ── Session exists — proceed with login ──
+    const token = data.session?.access_token;
+    if (!token) {
+      throw new Error('Authentication succeeded but no access token was returned.');
+    }
+
+    currentToken = token;
     localStorage.setItem('bg_token', currentToken);
+
+    if (!data.user) {
+      throw new Error('Authentication succeeded but no user data was returned.');
+    }
 
     if (isSignupMode) {
       showAuthAlert('success', 'Account created! You are now signed in.');
@@ -437,10 +474,17 @@ async function handleAuth() {
 }
 
 function completeLogin(user) {
+  if (!user || !user.id) {
+    console.error('[auth] completeLogin called without valid user:', user);
+    handleLogout();
+    return;
+  }
+
   currentUserId = user.id;
-  document.getElementById('user-label').textContent = user.email;
+  const displayName = user.email || user.id;
+  document.getElementById('user-label').textContent = displayName;
   document.getElementById('user-avatar').className = 'w-8 h-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 flex items-center justify-center text-white text-xs font-semibold shrink-0';
-  document.getElementById('user-avatar').textContent = user.email[0].toUpperCase();
+  document.getElementById('user-avatar').textContent = (displayName[0] || '?').toUpperCase();
   document.getElementById('logout-btn').classList.remove('hidden');
   document.getElementById('auth-overlay').style.display = 'none';
   document.getElementById('user-id-display').textContent = `User ID: ${user.id}`;
@@ -451,7 +495,7 @@ function completeLogin(user) {
   authFetch('/api/auth/me')
     .then(r => r.json())
     .then(data => {
-      if (data.hasWallet && data.hasMandate) {
+      if (data.success && data.hasWallet && data.hasMandate) {
         showToast('info', 'Welcome back', 'Wallet and mandate found');
         refreshWallet();
       } else {
@@ -493,7 +537,7 @@ if (currentToken) {
   authFetch('/api/auth/me')
     .then(r => r.json())
     .then(data => {
-      if (data.user) {
+      if (data.success && data.user) {
         currentUserId = data.user.id;
         completeLogin(data.user);
       } else {
@@ -644,16 +688,17 @@ async function handleOnboard() {
 
   try {
     const res = await authFetch('/api/onboard', { method: 'POST', body: JSON.stringify(body) });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Onboarding failed');
+    const json = await res.json();
+    if (!res.ok || !json.success) throw new Error(json.error || 'Onboarding failed');
 
+    const result = json.data;
     document.getElementById('user-label').textContent = body.fullName;
     updateAvatar(body.fullName);
     showAlert('ob-alert', 'success',
       `<strong>Account created!</strong><br><br>
-       <strong>Virtual wallet:</strong> ${data.wallet.accountNumber}<br>
-       <strong>Mandate ID:</strong> ${data.mandate.mandateId}<br><br>
-       <strong>Next step:</strong> ${data.mandate.activationInstructions}`
+       <strong>Virtual wallet:</strong> ${result.wallet.accountNumber}<br>
+       <strong>Mandate ID:</strong> ${result.mandate.mandateId}<br><br>
+       <strong>Next step:</strong> ${result.mandate.activationInstructions}`
     );
     await refreshWallet();
   } catch(e) {

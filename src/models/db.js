@@ -48,12 +48,14 @@ async function updateUser(id, updates) {
   if (updates.cooldownMinutes !== undefined) mapped.cooldown_minutes = updates.cooldownMinutes;
   if (updates.streakWeeks !== undefined) mapped.streak_weeks = updates.streakWeeks;
 
+  if (Object.keys(mapped).length === 0) return null;
+
   const { data, error } = await supabase
     .from("users")
     .update(mapped)
     .eq("id", id)
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error("[db] updateUser error:", error);
@@ -123,7 +125,7 @@ async function incrementSpend(userId, amount) {
     })
     .eq("user_id", userId)
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error("[db] incrementSpend error:", error);
@@ -141,7 +143,7 @@ async function resetWeeklyCycle(userId) {
     })
     .eq("user_id", userId)
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error("[db] resetWeeklyCycle error:", error);
@@ -153,27 +155,25 @@ async function resetWeeklyCycle(userId) {
 // ─── Mandates ────────────────────────────────────────────────────────────────
 
 async function saveMandateRecord({ userId, mandateId, merchantReference, description }) {
-  // Delete old record if exists (upsert by user_id)
-  await supabase.from("mandates").delete().eq("user_id", userId);
-
+  // Use upsert atomic pattern — no separate delete needed
   const { data, error } = await supabase
     .from("mandates")
-    .insert({
+    .upsert({
       user_id: userId,
       mandate_id: mandateId || "",
       merchant_reference: merchantReference || "",
       description: description || "",
       status: "PENDING",
       advice_status: "ADVICE_NOT_SENT",
-    })
+    }, { onConflict: "user_id" })
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error("[db] saveMandateRecord error:", error);
     throw error;
   }
-  return mapMandate(data);
+  return data ? mapMandate(data) : null;
 }
 
 async function getMandate(userId) {
@@ -195,12 +195,14 @@ async function updateMandateStatus(userId, { status, adviceStatus }) {
   if (status !== undefined) updates.status = status;
   if (adviceStatus !== undefined) updates.advice_status = adviceStatus;
 
+  if (Object.keys(updates).length === 0) return null;
+
   const { data, error } = await supabase
     .from("mandates")
     .update(updates)
     .eq("user_id", userId)
     .select()
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error("[db] updateMandateStatus error:", error);

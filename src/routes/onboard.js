@@ -85,60 +85,69 @@ router.post("/", async (req, res) => {
 
     res.status(201).json({
       success: true,
-      userId,
-      wallet: {
-        accountRef: acctRef,
-        accountNumber: acctNum,
-        weeklyBudget,
-      },
-      mandate: {
-        mandateId,
-        activationInstructions: mandateDesc,
-        status: "PENDING",
-        note: "Mandate can take up to 72 hours to activate after you send the ₦50 token payment.",
+      data: {
+        userId,
+        wallet: {
+          accountRef: acctRef,
+          accountNumber: acctNum,
+          weeklyBudget,
+        },
+        mandate: {
+          mandateId,
+          activationInstructions: mandateDesc,
+          status: "PENDING",
+          note: "Mandate can take up to 72 hours to activate after you send the ₦50 token payment.",
+        },
       },
     });
   } catch (err) {
-    console.error("Onboarding error:", err.response?.data || err.message);
-    res.status(500).json({ error: "Onboarding failed.", detail: err.response?.data || err.message });
+    console.error("Onboarding error:", err);
+    res.status(500).json({ success: false, error: "Onboarding failed.", detail: err.message });
   }
 });
 
 router.get("/mandate-status/:userId", async (req, res) => {
-  const { userId } = req.params;
-  const mandate = await db.getMandate(userId);
-
-  if (!mandate) {
-    return res.status(404).json({ error: "No mandate found for this user." });
+  const targetUserId = req.params.userId === "me" ? req.userId : req.params.userId;
+  // Only allow checking own mandate status
+  if (targetUserId !== req.userId) {
+    return res.status(403).json({ success: false, error: "You can only check your own mandate status." });
   }
 
   try {
+    const mandate = await db.getMandate(targetUserId);
+    if (!mandate) {
+      return res.status(404).json({ success: false, error: "No mandate found. Complete onboarding first." });
+    }
+
     const liveStatus = await nomba.getMandateStatus(mandate.mandateId, ACCOUNT_ID);
 
     const status = (liveStatus.mandateStatus || liveStatus.status || "").toUpperCase();
     const advice = (liveStatus.mandateAdviceStatus || liveStatus.adviceStatus || "").replace(/[\s-]/g, "_").toUpperCase();
 
     const prevStatus = mandate.status;
-    await db.updateMandateStatus(userId, { status, adviceStatus: advice });
+    await db.updateMandateStatus(targetUserId, { status, adviceStatus: advice });
 
     const isReady = status === "ACTIVE" && advice === "ADVICE_SENT";
 
     if (isReady && prevStatus !== "ACTIVE") {
-      emit(userId, "mandate:ready", {});
+      emit(targetUserId, "mandate:ready", {});
     }
 
     res.json({
-      mandateId: mandate.mandateId,
-      status,
-      adviceStatus: advice,
-      isReady,
-      message: isReady
-        ? "✅ Mandate is active. Your BetSafe wallet is ready!"
-        : "⏳ Still waiting for your bank to confirm. Check back in a few hours.",
+      success: true,
+      data: {
+        mandateId: mandate.mandateId,
+        status,
+        adviceStatus: advice,
+        isReady,
+        message: isReady
+          ? "Mandate is active. Your wallet is ready!"
+          : "Still waiting for your bank to confirm. Check back in a few hours.",
+      },
     });
   } catch (err) {
-    console.error("Mandate status error:", err.response?.data || err.message);
-    res.status(500).json({ error: "Could not fetch mandate status." });
+    console.error("Mandate status error:", err);
+    res.status(500).json({ success: false, error: "Could not fetch mandate status." });
   }
 });
 

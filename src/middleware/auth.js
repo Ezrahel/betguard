@@ -6,36 +6,50 @@ const { createClient } = require("@supabase/supabase-js");
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
+// Cache a single anon client — no need to re-create on every request
+let _anonClient = null;
+function getAnonClient() {
+  if (!_anonClient) {
+    _anonClient = createClient(
+      SUPABASE_URL || "http://localhost:54321",
+      SUPABASE_ANON_KEY || "placeholder",
+      {
+        auth: { autoRefreshToken: false, persistSession: false },
+      }
+    );
+  }
+  return _anonClient;
+}
+
 function authMiddleware(req, res, next) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Missing or invalid Authorization header." });
+    return res.status(401).json({ success: false, error: "Missing or invalid Authorization header." });
   }
 
   const token = authHeader.slice(7);
+  if (!token) {
+    return res.status(401).json({ success: false, error: "Empty token." });
+  }
 
-  // Create an anon client just to verify the token
-  const anonClient = createClient(
-    SUPABASE_URL || "http://localhost:54321",
-    SUPABASE_ANON_KEY || "placeholder",
-    {
-      auth: { autoRefreshToken: false, persistSession: false },
-      global: { headers: { Authorization: `Bearer ${token}` } },
-    }
-  );
-
-  anonClient.auth.getUser(token)
+  getAnonClient()
+    .auth
+    .getUser(token)
     .then(({ data, error }) => {
-      if (error || !data?.user) {
-        return res.status(401).json({ error: "Invalid or expired token." });
+      if (error) {
+        return res.status(401).json({ success: false, error: `Token verification failed: ${error.message}` });
+      }
+      if (!data?.user) {
+        return res.status(401).json({ success: false, error: "Token valid but no user found." });
       }
       req.userId = data.user.id;
-      req.userEmail = data.user.email;
+      req.userEmail = data.user.email ?? null;
       next();
     })
-    .catch(() => {
-      res.status(401).json({ error: "Token verification failed." });
+    .catch((err) => {
+      console.error("[auth] Middleware error:", err);
+      res.status(401).json({ success: false, error: "Token verification failed." });
     });
 }
 
