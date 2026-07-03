@@ -360,6 +360,28 @@ tailwind.config = {
 </div>
 
 <script>
+// ── Handle Supabase email confirmation redirect ──
+// After user clicks confirmation link, Supabase redirects with #access_token=xxx&refresh_token=yyy
+(function() {
+  if (window.location.hash && window.location.hash.includes('access_token=')) {
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    const token = params.get('access_token');
+    const type = params.get('type');
+    if (token) {
+      localStorage.setItem('bg_token', token);
+      // Show loading state in the auth card instead of the login form
+      document.getElementById('auth-login').innerHTML = `
+        <div class="text-center py-8">
+          <div class="inline-block w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin mb-4"></div>
+          <p class="text-sm text-slate-500 font-medium">${type === 'signup' ? 'Email verified! Signing you in...' : 'Signing you in...'}</p>
+        </div>
+      `;
+      // Clean URL — remove the hash so page load continues cleanly
+      history.replaceState(null, '', window.location.pathname + window.location.search);
+    }
+  }
+})();
+
 // ── Auth state ──
 let currentUserId = null;
 let currentToken = localStorage.getItem('bg_token');

@@ -183,6 +183,23 @@ app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "../public/index.html"));
 });
 
+// ─── Keep-alive self-ping (prevents Render spin-down, best-effort) ────────────
+const cron = require("node-cron");
+const http = require("http");
+
+const APP_URL = process.env.APP_URL || `http://localhost:${PORT}`;
+
+function startKeepAlive() {
+  cron.schedule("*/10 * * * *", () => {
+    http.get(`${APP_URL}/api/health`, (res) => {
+      console.log(`[keepalive] pinged ${APP_URL}/api/health → ${res.statusCode}`);
+    }).on("error", (err) => {
+      console.error(`[keepalive] ping failed: ${err.message}`);
+    });
+  });
+  console.log(`⏰ Keep-alive cron scheduled (every 10 min → ${APP_URL}/api/health)`);
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🛡️  BetSafe running on http://localhost:${PORT}`);
@@ -190,4 +207,5 @@ app.listen(PORT, () => {
   console.log(`   Supabase: ${SUPABASE_URL ? "✅ configured" : "❌ not set"}`);
   startWeeklyCycleJob();
   startMandatePoller();
+  startKeepAlive();
 });
