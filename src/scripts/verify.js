@@ -70,7 +70,7 @@ async function testCreateVirtualAccount() {
     const ref = `betguard_verify_${TS}`;
     const res = await axios.post(
       `${BASE_URL}/v1/accounts/virtual`,
-      { accountRef: ref, accountName: `BetGuard Verify ${TS}` },
+      { accountRef: ref, accountName: `BetSafe Verify ${TS}` },
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -223,7 +223,7 @@ async function testCreateMandate() {
 
 (async () => {
   console.log("══════════════════════════════════════════════════");
-  console.log("  BetGuard — Nomba Sandbox Verification Script");
+  console.log("  BetSafe — Nomba Sandbox Verification Script");
   console.log("  Environment:", BASE_URL);
   console.log("  Timestamp:", new Date().toISOString());
   console.log("══════════════════════════════════════════════════\n");
