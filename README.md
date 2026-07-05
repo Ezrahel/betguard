@@ -160,20 +160,23 @@ BetSafe flips the model: **the money never sits in your betting account**. It li
 
 | Method | Route | Description | Auth |
 |--------|-------|-------------|------|
-| POST | `/api/onboard` | Register user, create virtual account + mandate | — |
-| GET | `/api/onboard/mandate-status/:userId` | Poll + auto-update mandate status | — |
-| GET | `/api/bet/providers` | List supported betting platforms | Token |
-| POST | `/api/bet/verify-account` | Verify a betting account ID | Token |
-| POST | `/api/bet/place` | Gated bet placement (spendingGate runs) | Token |
-| GET | `/api/wallet/:userId` | Wallet state + cooldown info + live Nomba balance | — |
-| GET | `/api/wallet/:userId/history` | Transaction history (newest first) | — |
-| GET | `/api/wallet/:userId/insights` | Daily spend, peak hour, avg size, risk score | — |
-| PATCH | `/api/wallet/:userId/budget` | Update weekly budget | — |
-| PATCH | `/api/wallet/:userId/cooldown` | Set cooldown minutes (0/10/30/60/120) | — |
+| POST | `/api/auth/signup` | Create account with email/password | — |
+| POST | `/api/auth/signin` | Sign in, returns JWT access + refresh token | — |
+| GET | `/api/auth/me` | Verify token, get user + wallet + mandate status | JWT |
+| POST | `/api/onboard` | Register user, create virtual account + mandate | JWT |
+| GET | `/api/onboard/mandate-status/:userId` | Poll Nomba for mandate activation status | JWT |
+| GET | `/api/bet/providers` | List supported betting platforms | JWT |
+| POST | `/api/bet/verify-account` | Verify a betting account ID | JWT |
+| POST | `/api/bet/place` | Gated bet placement (spendingGate runs) | JWT |
+| GET | `/api/wallet/:userId` | Wallet state + cooldown info + live Nomba balance | JWT |
+| GET | `/api/wallet/:userId/history` | Transaction history (newest first) | JWT |
+| GET | `/api/wallet/:userId/insights` | Daily spend, peak hour, avg size, risk score | JWT |
+| PATCH | `/api/wallet/:userId/budget` | Update weekly budget (min ₦500) | JWT |
+| PATCH | `/api/wallet/:userId/cooldown` | Set cooldown minutes (0/10/30/60/120) | JWT |
 | POST | `/api/webhooks/nomba` | Nomba payment event receiver | Webhook secret |
-| GET | `/api/events/:userId` | Server-Sent Events stream | — |
-| POST | `/api/admin/trigger-cycle` | Manual Monday cycle (demo) | — |
-| GET | `/api/health` | Health + version + user count | — |
+| GET | `/api/events/:userId` | Server-Sent Events real-time stream | Token (query) |
+| POST | `/api/admin/trigger-cycle` | Manual weekly cycle (demo trigger) | JWT |
+| GET | `/api/health` | Health check + version + user count | — |
 
 ---
 
@@ -202,10 +205,12 @@ betguard/
 │   ├── server.js                # Express entry point
 │   ├── services/
 │   │   ├── nomba.js             # Nomba API client (safeGet, logging)
+│   │   ├── supabase.js          # Supabase admin client init
 │   │   └── insights.js          # Weekly insights engine
 │   ├── models/
-│   │   └── db.js                # File-persisted data store (data/db.json)
+│   │   └── db.js                # Supabase data access layer (users, wallets, mandates, transactions)
 │   ├── middleware/
+│   │   ├── auth.js              # JWT verification via Supabase
 │   │   └── spendingGate.js      # Budget + cooldown enforcement
 │   ├── routes/
 │   │   ├── onboard.js           # User registration + mandate
@@ -218,13 +223,16 @@ betguard/
 │   │   └── mandatePoller.js     # 15-min mandate status check
 │   └── scripts/
 │       └── verify.js            # Sandbox API verification
+├── supabase/
+│   └── schema.sql               # PostgreSQL schema + RLS policies
 ├── public/
 │   └── index.html               # Glassmorphism SPA (Tailwind + Chart.js)
-├── data/
-│   └── db.json                  # Auto-created persistence file
-├── Procfile                     # Railway: web node src/server.js
-├── railway.json                 # Nixpacks config
-└── .env                         # Nomba credentials
+├── scripts/
+│   └── keep-alive.sh            # Render spin-down prevention ping
+├── Procfile                     # Render: web node src/server.js
+├── railway.json                 # Nixpacks deploy config
+├── .env                         # Nomba + Supabase credentials
+└── .env.example                 # Environment variable template
 ```
 
 ---

@@ -102,6 +102,8 @@ async function computeInsights(userId) {
     blockedAttempts,
     streakWeeks,
     riskScore,
+    weeklyBudget: user.weeklyBudget,
+    weeklySpent: wallet.weeklySpent,
   };
 }
 

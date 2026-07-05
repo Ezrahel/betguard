@@ -6,7 +6,23 @@ const { emit } = require("./events");
 
 const router = express.Router();
 
+const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+
+function verifyWebhookSecret(req) {
+  if (!WEBHOOK_SECRET) return true; // no secret configured — accept all
+
+  const headerSecret = req.headers["x-webhook-secret"] || req.headers["x-nomba-signature"] || "";
+  const bodySecret = req.body?.secret || "";
+
+  return headerSecret === WEBHOOK_SECRET || bodySecret === WEBHOOK_SECRET;
+}
+
 router.post("/nomba", (req, res) => {
+  if (!verifyWebhookSecret(req)) {
+    console.warn("📥 Nomba webhook rejected — invalid secret");
+    return res.status(401).json({ error: "Invalid webhook secret" });
+  }
+
   const event = req.body;
   console.log("📥 Nomba webhook received:", JSON.stringify(event, null, 2));
 

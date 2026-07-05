@@ -952,6 +952,8 @@ async function renderChart() {
     if (!res.ok) return;
     const data = await res.json();
     const dailySpend = data.dailySpend || [];
+    const weeklyBudget = data.weeklyBudget || 5000;
+    const dailyShare = weeklyBudget / 7;
     const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const amounts = dailySpend.map(d => d.amount || 0);
 
@@ -969,7 +971,6 @@ async function renderChart() {
           data: amounts,
           backgroundColor: amounts.map(a => {
             if (a === 0) return 'rgba(148,163,184,0.15)';
-            const dailyShare = 5000 / 7;
             const pct = dailyShare > 0 ? (a / dailyShare) * 100 : 0;
             if (pct > 80) return 'rgba(239,68,68,0.6)';
             if (pct > 50) return 'rgba(245,158,11,0.6)';
@@ -977,7 +978,6 @@ async function renderChart() {
           }),
           borderColor: amounts.map(a => {
             if (a === 0) return 'rgba(148,163,184,0.3)';
-            const dailyShare = 5000 / 7;
             const pct = dailyShare > 0 ? (a / dailyShare) * 100 : 0;
             if (pct > 80) return 'rgba(239,68,68,1)';
             if (pct > 50) return 'rgba(245,158,11,1)';
