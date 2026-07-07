@@ -135,7 +135,7 @@ async function createMandate({
 }) {
   try {
     const headers = await authHeaders(subAccountId)();
-    const now = new Date();
+    const now = new Date(Date.now() + 120_000); // 2 min buffer for clock drift
     const oneYearLater = new Date(now);
     oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
     const fmt = (d) => d.toISOString().slice(0, 16);
@@ -151,6 +151,7 @@ async function createMandate({
         customerEmail,
         customerPhoneNumber,
         merchantReference,
+        amount: 50,
         frequency: "VARIABLE",
         narration: "BetSafe weekly wallet top-up",
         startDate: fmt(now),

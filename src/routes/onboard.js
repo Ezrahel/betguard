@@ -55,9 +55,9 @@ router.post("/", async (req, res) => {
     });
 
     // Create Direct Debit mandate
+    const merchantReference = `BG${Date.now()}`;
     let mandateResult;
     try {
-      const merchantReference = `BG${Date.now()}`;
       mandateResult = await nomba.createMandate({
         customerAccountNumber: bankAccountNumber,
         bankCode,
